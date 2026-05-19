@@ -12,6 +12,50 @@ We deliberately keep the topic count small in V1. Each topic carries one well de
 
 ## Live topics in V1
 
+### cognitive-prescriptions
+Carries one prescription envelope per cognitive evaluation. Produced by the prescription worker after joining the cognitive state with the latest predictive failure forecast for the same driver. The Mission Control surface subscribes through the gateway. Every prescription is also appended to the audit log so the call is reproducible.
+
+Example payload:
+
+```json
+{
+  "kind": "prescription",
+  "driver_id": "VER",
+  "timestamp": "2026-05-19T12:00:00.100Z",
+  "prescription": {
+    "driver_id": "VER",
+    "timestamp": "2026-05-19T12:00:00.100Z",
+    "optimality": {
+      "cognitive_efficiency": 32.6,
+      "performance_lost_s": 1.01,
+      "weighted_distance": 2.24,
+      "centroid": {"stress_score": 62.0, "confidence_score": 78.0, "fatigue_score": 44.0, "cognitive_load_score": 66.0, "panic_probability": 18.0},
+      "deltas": {"stress_score": 16.0, "confidence_score": -37.0, "fatigue_score": 19.0, "cognitive_load_score": 5.0, "panic_probability": 6.0},
+      "contributions": {"confidence_score": 0.87, "fatigue_score": 0.07, "stress_score": 0.05, "panic_probability": 0.01, "cognitive_load_score": 0.004},
+      "sample_count": 0,
+      "persona_seed": "Aggressive"
+    },
+    "primary": {
+      "code": "box_now",
+      "label": "Pit window: immediate",
+      "surface": "strategy",
+      "summary": "Panic probability and tunnel vision risk a session ending incident. Pit now.",
+      "score": 62.0,
+      "triggers": ["forecast_panic_above_55"],
+      "blocked_by": [],
+      "projected_twin": {"stress_score": 58.0, "panic_probability": 0.0, "fatigue_score": 53.0},
+      "projected_efficiency": 41.2
+    },
+    "alternatives": [],
+    "rationale": "Persona Aggressive on a moderate confidence band. Cognitive efficiency 33/100 with 1.01s left on the table. Biggest envelope drift on confidence. Prescribed action: Pit window: immediate.",
+    "forecast_used": true
+  }
+}
+```
+
+Producers: `PrescriptionWorker`.
+Consumers: gateway websocket bridge, audit log, downstream operator surfaces.
+
 ### incoming-telemetry-raw
 Every frame that comes off the playback streamer lands here first. This is the firehose. Average rate is around ten messages per driver per second, which lines up with FastF1 telemetry density.
 

@@ -34,6 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.backend.api import schemas
 from src.backend.config import get_settings
 from src.backend.inference.emotional_state import evaluate as evaluate_emotion
+from src.backend.prescription.engine import PrescriptionEngine
 from src.backend.reporting.post_race import build_report
 from src.backend.security import roles as roles_registry
 from src.backend.security.auth import current_claims, require_scopes
@@ -41,6 +42,12 @@ from src.backend.security.tokens import TokenClaims, issue_token
 from src.backend.simulation import counterfactual as counterfactual_engine
 from src.backend.simulation.ghost_lap import LapCognitiveSummary, attribute_lost_time
 from src.backend.strategy import parliament
+from src.backend.whatif.replay import (
+    build_rationale as build_whatif_rationale,
+    load_audit_window,
+    replay_trajectory,
+    summarise_trajectory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +100,7 @@ async def _kafka_bridge(manager: ConnectionManager) -> None:
             "explanation-events",
             "emotional-events",
             "anomaly-events",
+            "cognitive-prescriptions",
         ]
     )
 
@@ -139,6 +147,9 @@ def _scope_dependency(*required: str):
         return claims
 
     return _dependency
+
+
+_PREVIEW_ENGINE = PrescriptionEngine()
 
 
 def create_app() -> FastAPI:
@@ -287,6 +298,65 @@ def create_app() -> FastAPI:
             distribution=report.distribution,
             dominant_emotion=report.dominant_emotion,
             dominant_probability=report.dominant_probability,
+        )
+
+    @app.post("/prescription/preview", response_model=schemas.PrescriptionResponse)
+    def prescription_preview(
+        req: schemas.PrescriptionPreviewRequest,
+        _claims: TokenClaims = Depends(_scope_dependency("write:prescription_preview")),
+    ) -> schemas.PrescriptionResponse:
+        result = _PREVIEW_ENGINE.emit(state=req.cognitive_state, forecast=req.forecast)
+        data = result.to_dict()
+        return schemas.PrescriptionResponse(
+            driver_id=str(data["driver_id"]),
+            timestamp=str(data["timestamp"]),
+            optimality=data["optimality"],
+            primary=data["primary"],
+            alternatives=data["alternatives"],
+            rationale=str(data["rationale"]),
+            forecast_used=bool(data["forecast_used"]),
+            granite=None,
+        )
+
+    @app.post("/whatif/replay", response_model=schemas.WhatIfReplayResponse)
+    def whatif_replay(
+        req: schemas.WhatIfReplayRequest,
+        _claims: TokenClaims = Depends(_scope_dependency("write:whatif")),
+    ) -> schemas.WhatIfReplayResponse:
+        rows = load_audit_window(
+            driver_id=req.driver_id,
+            window_seconds=req.window_seconds,
+            audit_path=req.audit_path,
+        )
+        if not rows:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No audit rows found for driver {req.driver_id!r} in "
+                    f"the requested window."
+                ),
+            )
+        mutations = [m.model_dump() for m in req.mutations]
+        trajectory = replay_trajectory(rows, mutations)
+        summary = summarise_trajectory(trajectory)
+        rationale = build_whatif_rationale(summary, mutations)
+        trajectory_payload = [
+            schemas.WhatIfTrajectoryPoint(
+                timestamp=p.timestamp,
+                baseline={k: float(v) for k, v in p.baseline.items() if isinstance(v, (int, float))},
+                counterfactual={k: float(v) for k, v in p.counterfactual.items() if isinstance(v, (int, float))},
+                delta={k: float(v) for k, v in p.delta.items() if isinstance(v, (int, float))},
+            )
+            for p in trajectory
+        ]
+        return schemas.WhatIfReplayResponse(
+            driver_id=req.driver_id,
+            window_seconds=req.window_seconds,
+            mutations=mutations,
+            baseline_count=len(rows),
+            trajectory=trajectory_payload,
+            summary=summary,
+            rationale=rationale,
         )
 
     @app.get("/reports/{session_id}", response_model=schemas.PostRaceReportResponse)

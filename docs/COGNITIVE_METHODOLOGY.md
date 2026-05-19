@@ -124,6 +124,77 @@ The engine is also a stable foundation for the learned models that follow. The f
 
 Every adjustment to the constants above lands in `CHANGELOG.md` against the version that ships them. The audit log writes the active constants alongside the cognitive event so historical replays remain reproducible.
 
+## Driver Performance Envelope and the Optimality Gap
+
+The Cognitive Twin describes the driver. The Driver Performance Envelope describes the driver's own fast lap cognitive signature. The Optimality Gap is the signed distance between the two. This section documents every constant inside `src/backend/prescription/envelope.py` and `src/backend/prescription/optimality.py`.
+
+What we are trying to measure. A real time estimate of how close the driver is to their own peak performance cognitive state, plus an honest estimate of how much laptime they are leaving on the table this lap because of cognitive distance from that state.
+
+Why not a deep network. A learned model trained inside a hackathon window on synthetic priors would not be defensible in a code review or a stewards' meeting. The envelope is a non parametric centroid in five dimensional cognitive space. Every constant is interpretable. Phase 3 of the roadmap swaps the inference function for a learned model without changing this contract.
+
+The five envelope dimensions. `stress_score`, `confidence_score`, `fatigue_score`, `cognitive_load_score`, `panic_probability`. These five carry most of the laptime relevant signal. Attention stability, strategic reliability, emotional drift, and tunnel vision are still surfaced on the dashboard but they correlate strongly with the five envelope dimensions and including them would over weight the same underlying signal.
+
+Per dimension weights inside the distance calculation.
+
+```
+stress_score          0.18
+confidence_score      0.32
+fatigue_score         0.18
+cognitive_load_score  0.14
+panic_probability     0.18
+```
+
+Confidence carries the biggest coefficient because confidence collapses before laptime collapses in publicly available footage. Panic and stress matter for safety but tend to lag confidence. Cognitive load gets a slightly smaller weight because at moderate values it is part of normal racing.
+
+Bootstrap. On first sight of a driver the envelope is seeded from a persona prior. Flow State has low stress, high confidence, modest cognitive load, near zero panic. Aggressive deliberately pushes stress and load. Panic is the worst case prior. Each prior carries a tolerance vector that widens for noisier states. Priors live in `PERSONA_PRIORS` inside `envelope.py`.
+
+Online refinement. Every cognitive event with a `high` confidence band moves the centroid with an exponential moving average at smoothing factor 0.04. Events with a `moderate` band are dampened. Events with an `unstable` band are ignored. Tolerances shrink slowly with evidence but never below the floor of six points. The envelope's `sample_count` is surfaced to Mission Control so the operator can see how much evidence is behind the centroid.
+
+Distance to efficiency.
+
+```
+cognitive_efficiency = 100 * exp(-0.5 * weighted_distance)
+```
+
+Distance zero maps to efficiency one hundred. Distance one (one tolerance band per dimension) maps to ~61. Distance two maps to ~14. Small drifts inside the tolerance band do not panic the operator. Bigger drifts collapse the score quickly.
+
+Distance to seconds left on the table.
+
+```
+performance_lost_s = 0.45 * weighted_distance
+```
+
+The anchor is documented in `DISTANCE_TO_SECONDS`. A normalised distance of one band maps to roughly forty five hundredths of a second. The shape was chosen so a clearly out of envelope driver shows up as "leaving half a second on the table" rather than "leaving five seconds on the table".
+
+Per dimension contributions. The Optimality Report returns the share of weighted distance attributable to each dimension. The dashboard surfaces the top contributor so the strategist sees "biggest envelope drift on confidence" rather than a single opaque number.
+
+## Action space and guardrails
+
+The prescriptive engine is only allowed to emit one of the nine actions defined in `src/backend/prescription/actions.py`. The action space is small on purpose. A judge can read the whole file in thirty seconds and verify no action was hallucinated.
+
+Each action carries an expected effect on the cognitive twin per dimension. The engine projects the counterfactual twin five seconds out by applying the effect once and clipping every dimension to zero to one hundred. The projected efficiency under the action is what the Mission Control panel surfaces next to the action label.
+
+Guardrails are independent of the scoring engine. A high score cannot bypass a safety rule. Currently:
+
+- `radio_push` is blocked when `panic_probability > 55`.
+- `request_undercut_window` is blocked when `confidence_score < 55`.
+- `defensive_mode` is blocked when persona is Flow State.
+- `box_now` is blocked when persona is Flow State and panic probability is below 50.
+
+The scoring rules live in `src/backend/prescription/engine.py`. Each action has explicit triggers that contribute to its score. The engine sorts non blocked actions by score, picks the top one as the primary recommendation, and surfaces the next three as alternatives. Blocked actions sink to the bottom of the ranking and are clearly labelled with the guardrail that vetoed them.
+
+The five second forecast (`anomaly-events` topic) feeds the scoring engine as well. A high forecast panic collapse probability boosts `radio_calm` and `box_now`, and dampens `radio_push` even when the live state looks safe.
+
+## What If Replay
+
+The cognitive engine writes a JSONL audit row for every evaluation. Each row stores the engineered feature vector and the biometric snapshot that produced the score. The What If Replay engine in `src/backend/whatif/replay.py` reads those rows back, applies typed mutations to one or more rows, and re runs the exact same deterministic cognitive maths over the mutated inputs.
+
+Mutations use a dotted path inside the audit row (`inputs.biometrics.synthetic_hr`, `inputs.features.throttle_commitment`, etc.). The mutation API rejects unknown paths, whitespace, and characters outside `[A-Za-z0-9_.]` so the surface is small and predictable.
+
+The recomputation in `replay.py` mirrors `CognitiveInferenceEngine.evaluate` line for line. A unit test pins the maths so the two files cannot drift between live evaluation and replay.
+
+What If is grounded in real session data. It is not a synthetic counterfactual. The strategist can defend the result because the inputs are the exact ones the system saw at race time.
+
 ---
 
 NeuroPit · Built by Hriday Vig · IBM AI Builders Challenge 2026 powered by IBM SkillsBuild.

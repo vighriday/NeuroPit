@@ -130,3 +130,55 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in_seconds: int
     role: str
+
+
+class PrescriptionPreviewRequest(BaseModel):
+    """Ad hoc preview of the prescriptive engine without going through Kafka."""
+
+    cognitive_state: Dict[str, Any]
+    forecast: Optional[Dict[str, Any]] = None
+
+
+class PrescriptionResponse(BaseModel):
+    driver_id: str
+    timestamp: str
+    optimality: Dict[str, Any]
+    primary: Dict[str, Any]
+    alternatives: List[Dict[str, Any]] = Field(default_factory=list)
+    rationale: str
+    forecast_used: bool
+    granite: Optional[Dict[str, Any]] = None
+
+
+class WhatIfMutation(BaseModel):
+    """One mutation to apply to a recorded cognitive event during replay."""
+
+    target: str = Field(description="Dotted path inside the audit record to override.")
+    value: Any = Field(description="Replacement value. Numbers and strings supported.")
+
+
+class WhatIfReplayRequest(BaseModel):
+    driver_id: str
+    audit_path: Optional[str] = Field(
+        default=None,
+        description="Absolute or relative path to an audit JSONL file. Defaults to today's file.",
+    )
+    window_seconds: int = Field(default=20, ge=1, le=600)
+    mutations: List[WhatIfMutation] = Field(default_factory=list)
+
+
+class WhatIfTrajectoryPoint(BaseModel):
+    timestamp: str
+    baseline: Dict[str, float]
+    counterfactual: Dict[str, float]
+    delta: Dict[str, float]
+
+
+class WhatIfReplayResponse(BaseModel):
+    driver_id: str
+    window_seconds: int
+    mutations: List[Dict[str, Any]]
+    baseline_count: int
+    trajectory: List[WhatIfTrajectoryPoint]
+    summary: Dict[str, Any]
+    rationale: str

@@ -1,12 +1,37 @@
 // Shared helpers for talking to the NeuroPit gateway from the dashboard.
 // Every fetch sends the bearer token from local storage when present.
+//
+// `ensureDashboardToken` mints a race_strategist token automatically on first
+// load so the dashboard can call protected endpoints without a manual login
+// step. A real deployment swaps this for the team's identity provider.
 
 const API_BASE = process.env.NEXT_PUBLIC_NEUROPIT_API_URL ?? "http://localhost:8000";
+const DASHBOARD_ROLE = "race_strategist";
 
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const token = window.localStorage.getItem("neuropit_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export async function ensureDashboardToken(role: string = DASHBOARD_ROLE): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  const existing = window.localStorage.getItem("neuropit_token");
+  if (existing) return existing;
+  try {
+    const response = await fetch(`${API_BASE}/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subject: "mission-control", role }),
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { access_token?: string };
+    if (!body.access_token) return null;
+    window.localStorage.setItem("neuropit_token", body.access_token);
+    return body.access_token;
+  } catch {
+    return null;
+  }
 }
 
 export async function postJSON<TBody, TResponse>(path: string, body: TBody): Promise<TResponse> {

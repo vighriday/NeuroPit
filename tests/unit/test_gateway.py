@@ -217,3 +217,129 @@ def test_reports_endpoint_returns_envelope(client, tmp_path, monkeypatch):
     body = response.json()
     assert body["driver_count"] == 0
     assert body["drivers"] == {}
+
+
+def _flow_state_payload():
+    return {
+        "cognitive_state": {
+            "driver_id": "VER",
+            "timestamp": "2026-05-19T12:00:00Z",
+            "stress_score": 28.0,
+            "confidence_score": 84.0,
+            "fatigue_score": 24.0,
+            "cognitive_load_score": 38.0,
+            "attention_stability": 80.0,
+            "strategic_reliability": 80.0,
+            "panic_probability": 4.0,
+            "emotional_drift_score": 10.0,
+            "tunnel_vision_prob": 0.0,
+            "persona_state": "Flow State",
+            "confidence_band": "high",
+        },
+        "forecast": None,
+    }
+
+
+def test_prescription_preview_endpoint(client):
+    token = _token(client, "race_strategist")
+    response = client.post(
+        "/prescription/preview",
+        headers=_auth(token),
+        json=_flow_state_payload(),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["primary"]["code"] in {
+        "hold_position",
+        "radio_push",
+        "radio_calm",
+        "radio_reduce_information",
+        "lift_aggression",
+        "request_undercut_window",
+        "defensive_mode",
+        "recovery_lap",
+        "box_now",
+    }
+    assert "cognitive_efficiency" in body["optimality"]
+    assert isinstance(body["alternatives"], list)
+
+
+def test_prescription_preview_requires_scope(client):
+    token = _token(client, "driver_engineer")
+    response = client.post(
+        "/prescription/preview",
+        headers=_auth(token),
+        json=_flow_state_payload(),
+    )
+    assert response.status_code == 403
+
+
+def _audit_row(timestamp: str, driver: str = "VER"):
+    return {
+        "kind": "cognitive_evaluation",
+        "driver_id": driver,
+        "timestamp": timestamp,
+        "state": {
+            "driver_id": driver,
+            "timestamp": timestamp,
+            "stress_score": 55.0,
+            "confidence_score": 70.0,
+            "fatigue_score": 30.0,
+            "panic_probability": 8.0,
+            "persona_state": "Recovery",
+            "confidence_band": "high",
+        },
+        "inputs": {
+            "features": {
+                "steering_instability": 4.0,
+                "panic_oscillation": 6.0,
+                "throttle_commitment": 78.0,
+                "braking_hesitation": 4.0,
+                "micro_correction_freq": 6.0,
+                "throttle_jitter": 8.0,
+            },
+            "biometrics": {"synthetic_hr": 150.0, "synthetic_hrv": 50.0},
+        },
+    }
+
+
+def test_whatif_replay_endpoint(client, tmp_path):
+    audit_path = tmp_path / "audit.jsonl"
+    with audit_path.open("w", encoding="utf-8") as fh:
+        import json as _json
+        for i in range(4):
+            fh.write(_json.dumps(_audit_row(f"2026-05-19T12:00:0{i}Z")) + "\n")
+
+    token = _token(client, "race_strategist")
+    response = client.post(
+        "/whatif/replay",
+        headers=_auth(token),
+        json={
+            "driver_id": "VER",
+            "audit_path": str(audit_path),
+            "window_seconds": 4,
+            "mutations": [{"target": "inputs.biometrics.synthetic_hr", "value": 110.0}],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["baseline_count"] == 4
+    assert len(body["trajectory"]) == 4
+    assert body["summary"]["biggest_delta_field"] is not None
+
+
+def test_whatif_replay_404_when_no_audit_for_driver(client, tmp_path):
+    audit_path = tmp_path / "audit.jsonl"
+    audit_path.write_text("", encoding="utf-8")
+    token = _token(client, "race_strategist")
+    response = client.post(
+        "/whatif/replay",
+        headers=_auth(token),
+        json={
+            "driver_id": "NOBODY",
+            "audit_path": str(audit_path),
+            "window_seconds": 4,
+            "mutations": [],
+        },
+    )
+    assert response.status_code == 404

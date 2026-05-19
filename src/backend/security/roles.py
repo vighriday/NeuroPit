@@ -26,22 +26,47 @@ _ROLES: Dict[str, Role] = {
     "team_principal": Role(
         name="team_principal",
         description="Final decision maker on race strategy with full read access and strategy override.",
-        scopes={"read:cognitive", "read:explanation", "read:strategy", "write:strategy_override", "read:audit"},
+        scopes={
+            "read:cognitive",
+            "read:explanation",
+            "read:strategy",
+            "write:strategy_override",
+            "read:audit",
+            "read:prescription",
+            "read:whatif",
+        },
     ),
     "race_strategist": Role(
         name="race_strategist",
         description="Operates the strategy parliament during the race.",
-        scopes={"read:cognitive", "read:explanation", "read:strategy", "write:counterfactual"},
+        scopes={
+            "read:cognitive",
+            "read:explanation",
+            "read:strategy",
+            "write:counterfactual",
+            "read:prescription",
+            "write:prescription_preview",
+            "read:whatif",
+            "write:whatif",
+        },
     ),
     "driver_engineer": Role(
         name="driver_engineer",
         description="Driver performance engineer working with cognitive and telemetry signals.",
-        scopes={"read:cognitive", "read:telemetry", "read:ghost_lap"},
+        scopes={"read:cognitive", "read:telemetry", "read:ghost_lap", "read:prescription"},
     ),
     "neuro_analyst": Role(
         name="neuro_analyst",
         description="Sports neuroscientist or data engineer performing offline analysis.",
-        scopes={"read:cognitive", "read:telemetry", "read:audit", "read:ghost_lap"},
+        scopes={
+            "read:cognitive",
+            "read:telemetry",
+            "read:audit",
+            "read:ghost_lap",
+            "read:prescription",
+            "read:whatif",
+            "write:whatif",
+        },
     ),
 }
 

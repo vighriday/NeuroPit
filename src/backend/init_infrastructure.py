@@ -34,6 +34,7 @@ REQUIRED_TOPICS = [
     "weather-events",
     "strategy-events",
     "simulation-events",
+    "cognitive-prescriptions",
 ]
 
 QDRANT_COLLECTIONS = {

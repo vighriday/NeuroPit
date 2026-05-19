@@ -29,6 +29,9 @@ import { Footer } from "../components/Footer";
 import { MetricRing } from "../components/MetricRing";
 import { Nav } from "../components/Nav";
 import { PersonaTick, PersonaTimeline } from "../components/PersonaTimeline";
+import { PrescriptionPanel, type PrescriptionPayload } from "../components/PrescriptionPanel";
+import { WhatIfDrawer } from "../components/WhatIfDrawer";
+import { ensureDashboardToken } from "../lib/api";
 
 type CognitiveSnapshot = {
   driver_id: string;
@@ -74,6 +77,12 @@ type AnomalyEvent = {
   horizons: Record<string, Record<string, number>>;
 };
 
+type PrescriptionEnvelopePayload = {
+  driver_id: string;
+  timestamp: string;
+  prescription: PrescriptionPayload;
+};
+
 type ChartPoint = {
   time: string;
   stress: number;
@@ -87,6 +96,7 @@ type IncomingEnvelope =
   | { channel: "explanation-events"; payload: ExplanationEvent }
   | { channel: "emotional-events"; payload: EmotionalEvent }
   | { channel: "anomaly-events"; payload: AnomalyEvent }
+  | { channel: "cognitive-prescriptions"; payload: PrescriptionEnvelopePayload }
   | { channel: "heartbeat"; payload: { timestamp: string } }
   | { channel: string; payload: unknown };
 
@@ -127,6 +137,7 @@ type DriverState = {
   latest: CognitiveSnapshot | null;
   emotional: EmotionalEvent | null;
   forecast: AnomalyEvent | null;
+  prescription: PrescriptionPayload | null;
 };
 
 const emptyDriverState = (): DriverState => ({
@@ -135,6 +146,7 @@ const emptyDriverState = (): DriverState => ({
   latest: null,
   emotional: null,
   forecast: null,
+  prescription: null,
 });
 
 export default function MissionControl() {
@@ -145,6 +157,10 @@ export default function MissionControl() {
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
 
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    void ensureDashboardToken();
+  }, []);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -207,6 +223,14 @@ export default function MissionControl() {
             const ds = prev[evt.driver_id] ?? emptyDriverState();
             return { ...prev, [evt.driver_id]: { ...ds, forecast: evt } };
           });
+        } else if (envelope.channel === "cognitive-prescriptions") {
+          const evt = envelope.payload as PrescriptionEnvelopePayload;
+          if (evt.driver_id && evt.prescription) {
+            setByDriver((prev) => {
+              const ds = prev[evt.driver_id] ?? emptyDriverState();
+              return { ...prev, [evt.driver_id]: { ...ds, prescription: evt.prescription } };
+            });
+          }
         } else if (envelope.channel === "heartbeat") {
           setLastHeartbeat((envelope.payload as { timestamp: string }).timestamp);
         }
@@ -298,6 +322,7 @@ export default function MissionControl() {
           <div className="flex items-center gap-2 px-3 py-2 rounded border border-gray-800 bg-gray-900/40 text-gray-400 text-[11px] tracking-[0.3em] uppercase">
             HEARTBEAT {lastHeartbeat ? formatTime(lastHeartbeat) : "...."}
           </div>
+          <WhatIfDrawer driverId={selectedDriver} />
         </div>
       </div>
 
@@ -352,6 +377,10 @@ export default function MissionControl() {
         <SecondaryTile label="Attention" value={attention} icon={<Eye size={14} className="text-cyan-300" />} accent="text-cyan-200" />
         <SecondaryTile label="Strategic" value={strategic} icon={<Target size={14} className="text-emerald-300" />} accent="text-emerald-200" />
         <SecondaryTile label="Emotional drift" value={drift} icon={<Sparkles size={14} className="text-pink-300" />} accent="text-pink-200" />
+      </div>
+
+      <div className="mb-6">
+        <PrescriptionPanel prescription={active?.prescription ?? null} driverId={selectedDriver} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">

@@ -40,6 +40,8 @@ Tier D is explainable cognitive reasoning and trust. It contains the IBM Granite
 
 Tier E is the surface. It contains the Mission Control visualisation layer built in Next.js, the audit layer that writes every cognitive decision to disk, the post race cognitive intelligence reporting layer, and the historical cognition retrieval layer that lets the team query past sessions through vector search.
 
+Tier F is prescriptive cognition. The Cognitive Twin is diagnostic. The Prescriptive Engine in `src/backend/prescription/` turns each evaluation into a typed pit wall action, a quantified Optimality Gap against the driver's own performance envelope, a projected counterfactual twin five seconds out, and a Granite explained rationale. The What If Replay engine in `src/backend/whatif/` reuses the immutable audit log: it takes any past window for a driver, applies typed mutations to the original inputs, and re runs the same deterministic cognitive maths so the strategist can answer "what would have happened if we had calmed the radio earlier" without ever leaving real session data. Both pieces ride the same audit, the same Granite path, and the same trust band as the diagnostic tier. They are not bolt ons. They are the operational tier on top of the twin.
+
 ## How a frame travels through the system
 
 A telemetry frame begins its life inside `src/backend/ingestion/streamer.py`. The streamer loads a real Formula session from FastF1, merges the car physics with positional data, and replays the session frame by frame at a configurable speed. Each frame is wrapped in a `TelemetryFrame` model and published to the `incoming-telemetry-raw` topic on Redpanda.

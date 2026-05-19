@@ -67,6 +67,12 @@ def run_influx_writer():
     InfluxDBWriter().run()
 
 
+def run_prescription_worker():
+    from src.backend.prescription.worker import PrescriptionWorker
+
+    PrescriptionWorker().run()
+
+
 WORKERS = (
     ("FeatureExtractor", run_features),
     ("BiometricSynthesizer", run_biometrics),
@@ -74,6 +80,7 @@ WORKERS = (
     ("EmotionalStateWorker", run_emotional_state),
     ("PredictiveFailureEngine", run_failure_engine),
     ("ExplainabilityWorker", run_explainability),
+    ("PrescriptionWorker", run_prescription_worker),
     ("InfluxDBWriter", run_influx_writer),
 )
 

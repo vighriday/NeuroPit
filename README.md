@@ -152,6 +152,9 @@ Telemetry flows in on the left. The Cognitive Twin flows out on the right. Every
 | Predictive Failure Engine across four horizons | [`src/backend/prediction/failure_engine.py`](src/backend/prediction/failure_engine.py) |
 | Ghost Lap AI (cognitive-normalised laps) | [`src/backend/simulation/ghost_lap.py`](src/backend/simulation/ghost_lap.py) |
 | Counterfactual Simulation Engine | [`src/backend/simulation/counterfactual.py`](src/backend/simulation/counterfactual.py) |
+| **Cognitive Prescriptive Engine (Optimality Gap + typed actions)** | [`src/backend/prescription/engine.py`](src/backend/prescription/engine.py) |
+| **Driver Performance Envelope (per-driver fast-lap signature)** | [`src/backend/prescription/envelope.py`](src/backend/prescription/envelope.py) |
+| **Audit-log-driven What-If Replay engine** | [`src/backend/whatif/replay.py`](src/backend/whatif/replay.py) |
 | Multi-Agent Strategy Parliament | [`src/backend/strategy/parliament.py`](src/backend/strategy/parliament.py) |
 | IBM Granite explainable cognitive reasoning | [`src/backend/reasoning/granite_client.py`](src/backend/reasoning/granite_client.py) |
 | IBM Docling motorsport cognition ontology | [`src/backend/knowledge/docling_compiler.py`](src/backend/knowledge/docling_compiler.py) |
@@ -162,6 +165,22 @@ Telemetry flows in on the left. The Cognitive Twin flows out on the right. Every
 | JWT cognitive gateway with role-based access | [`src/backend/api/gateway.py`](src/backend/api/gateway.py) |
 | Fernet biometric encryption at the source | [`src/backend/security/crypto.py`](src/backend/security/crypto.py) |
 | Mission Control pit-wall surface | [`src/frontend/app/`](src/frontend/app/) |
+
+## From diagnostic twin to prescriptive operating system
+
+The Cognitive Twin tells the pit wall *what* is happening inside the driver. The Prescriptive Engine tells the pit wall *what to do about it*, and the What-If Replay engine lets the strategist *defend the call after the fact*. Three tiers, one audit trail, one Granite path.
+
+| Tier | What it produces | Where it lives |
+| --- | --- | --- |
+| **Diagnostic** | Nine-score Cognitive Twin per evaluation, persona label, emotional distribution, confidence band, Granite paragraph. | `src/backend/inference/`, `src/backend/reasoning/` |
+| **Prescriptive** | Cognitive efficiency score (0–100), seconds of laptime left on the table this lap, typed pit-wall action with projected counterfactual twin, ranked alternatives with guardrail status. | `src/backend/prescription/` |
+| **Counterfactual** | Audit-log-driven What-If replay. Pick a past window, mutate one input, re-run the deterministic cognitive maths, diff the trajectory. | `src/backend/whatif/` |
+
+The Prescriptive Engine reads each cognitive evaluation, projects it against the **Driver Performance Envelope** (per-driver fast-lap signature in five-dimensional cognitive space, bootstrapped from interpretable persona priors and refined online from the event stream), computes the **Optimality Gap**, scores nine typed actions, vetoes the unsafe ones with hard guardrails, and emits a single primary recommendation alongside ranked alternatives. Every emission is audited. Every emission ships a Granite rationale paragraph grounded in the motorsport ontology.
+
+The What-If Replay engine is grounded in real session data. The cognitive engine has always written every input it saw to a JSONL audit log. The replay engine reads that log back, applies typed mutations to one or more rows (e.g. drop synthetic heart rate to 110, raise throttle commitment to 90, lower steering instability), and re-runs the exact same deterministic cognitive maths over the mutated inputs. The strategist can answer "what would have happened if we had calmed the radio at Silverstone Lap 47" without leaving real data.
+
+Both tiers go through the same JWT-protected gateway, the same WebSocket fan-out, and the same audit log as the diagnostic twin.
 
 ### The full nine-score Cognitive Twin
 
@@ -235,7 +254,7 @@ If any step fails, the troubleshooting checklist lives under the FAQ at the bott
 | **IBM Granite usage** | [`src/backend/reasoning/granite_client.py`](src/backend/reasoning/granite_client.py) — Granite 3.1 8B Instruct via Hugging Face, ontology-grounded prompts, deterministic stub fallback, watsonx.ai optional path. Every reasoning event ships with `model_source`. |
 | **IBM Docling usage** | [`src/backend/knowledge/docling_compiler.py`](src/backend/knowledge/docling_compiler.py) — compiles FIA reports, neuroscience papers, and racing literature into a Qdrant collection. Retrieved at every Granite call. |
 | **Langflow usage** | [`orchestration/langflow/neuropit_strategy_flow.json`](orchestration/langflow/neuropit_strategy_flow.json) — importable visual flow. |
-| **Innovation** | Cognitive Twin Operating System category. Nine-score human-state inference is not a telemetry analytics product. Cognition is the product. |
+| **Innovation** | Three-tier system: diagnostic Cognitive Twin, prescriptive engine with typed action space and Optimality Gap against a per-driver Performance Envelope, audit-log-driven What-If Replay that lets the strategist re-run real session data under a mutated input. Nobody else ships this stack. |
 | **Technical depth** | Event-driven Redpanda pipeline, InfluxDB time-series persistence, Qdrant vector grounding, FastAPI WebSocket fan-out, JWT + RBAC, Fernet encryption at source, 104 unit tests, GitHub Actions CI. |
 | **Explainability** | Every output ships with a Granite paragraph, a confidence band, and a JSONL audit row. Physics-first reasoning forbids Granite from inventing cognitive numbers. |
 | **Impact** | Closes the seven-figure gap between telemetry analytics and driver state. Generalises to aviation, defence, surgery, esports, and elite athletics. |
@@ -253,9 +272,10 @@ A run order judges or recruiters can follow without you in the room.
 3. **01:00 — Point at the rings.** Four primary metrics (Stress / Confidence / Fatigue / Panic Probability). Note the confidence dots next to each.
 4. **01:45 — Switch driver.** Demonstrate the per-driver scoped Granite reasoning panel changing instantly.
 5. **02:30 — Open the reasoning panel.** Confirm `via granite-local` label and the cited ontology passages.
-6. **03:15 — Show the audit log.** Open any `audit_logs/cognitive-*.jsonl`. Point at `score_inputs`, `weights`, `model_source`. Note the audit row was written *before* the WebSocket emit.
-7. **04:00 — Show the methodology.** [`docs/COGNITIVE_METHODOLOGY.md`](docs/COGNITIVE_METHODOLOGY.md). Every weight, every threshold, defensible in a stewards' meeting.
-8. **04:30 — Close on the differentiator.** Other systems ask what is happening to the car. NeuroPit asks what is happening to the human nervous system operating the car.
+6. **03:00 — Point at the Prescriptive Engine panel.** Cognitive efficiency score, seconds left on the table this lap, primary prescribed action with its triggers, projected post-action efficiency, ranked alternatives with guardrail-blocked actions clearly labelled.
+7. **03:45 — Open the What-If drawer.** Pick a mutation preset ("Drop HR to calm baseline"), hit Run replay. Side-by-side baseline vs counterfactual trajectory plus a divergence summary, grounded in audit-log data rather than synthetic priors.
+8. **04:15 — Show the audit log.** Open any `audit_logs/cognitive-*.jsonl`. Point at `score_inputs`, `weights`, `model_source`. Note the audit row was written *before* the WebSocket emit, and that every prescription is audited the same way.
+9. **04:45 — Close on the differentiator.** Other systems ask what is happening to the car. NeuroPit infers the human nervous system operating the car, prescribes the next pit-wall action, and lets the strategist defend the call after the fact.
 
 ---
 
