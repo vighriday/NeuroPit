@@ -6,15 +6,19 @@ a confidence band and a snapshot of the active weights so the dashboard, the
 explainability worker, and the audit log can each tell the same story about
 how a given number was produced.
 
-The maths is documented in `docs/COGNITIVE_METHODOLOGY.md`. The topic shapes
-are documented in `docs/EVENT_TAXONOMY.md`. If either document disagrees with
-the code, the documents win.
+The engine emits the full nine score cognitive twin described in PRD section
+fifteen: stress, cognitive load, confidence, fatigue, tunnel vision, panic
+probability, attention stability, strategic reliability, and emotional
+drift. The maths is documented in `docs/COGNITIVE_METHODOLOGY.md`. The topic
+shapes are documented in `docs/EVENT_TAXONOMY.md`. If either document
+disagrees with the code, the documents win.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections import deque
 from typing import Optional
 
 from confluent_kafka import Consumer, Producer
@@ -29,6 +33,11 @@ logger = logging.getLogger(__name__)
 
 def _clamp_0_100(value: float) -> float:
     return float(max(0.0, min(100.0, value)))
+
+
+def _inv(value: float) -> float:
+    """Invert a zero to one hundred score to its complement."""
+    return _clamp_0_100(100.0 - value)
 
 
 class CognitiveInferenceEngine:
@@ -66,7 +75,12 @@ class CognitiveInferenceEngine:
 
         cache = self.state_cache.setdefault(
             driver_id,
-            {"features": {}, "biometrics": {}, "cumulative_fatigue": 0.0},
+            {
+                "features": {},
+                "biometrics": {},
+                "cumulative_fatigue": 0.0,
+                "confidence_history": deque(maxlen=weights.EMOTIONAL_DRIFT.window_size),
+            },
         )
 
         if topic == "telemetry-features":
@@ -77,44 +91,102 @@ class CognitiveInferenceEngine:
         if cache["features"] and cache["biometrics"]:
             self.evaluate(driver_id, timestamp, cache)
 
-    def evaluate(self, driver_id: str, timestamp: str, cache: dict) -> None:
+    def evaluate(self, driver_id: str, timestamp: str, cache: dict) -> dict:
         feature_msg = cache["features"]
         features = feature_msg.get("features", feature_msg)
         biometrics = cache["biometrics"]
 
-        w = weights.STRESS
-        c = weights.CONFIDENCE
-        f = weights.FATIGUE
-
-        steering_term = min(float(features.get("steering_instability", 0.0)) * w.steering_gain, 100.0)
-        hr_value = float(biometrics.get("synthetic_hr", w.hr_baseline))
-        hr_term = max(0.0, hr_value - w.hr_baseline) * w.hr_gain
-        panic_term = float(features.get("panic_oscillation", features.get("panic_signature", 0.0)))
-
-        stress_score = _clamp_0_100(
-            steering_term * w.steering
-            + hr_term * w.heart_rate
-            + panic_term * w.panic
-        )
-
+        steering_instability = float(features.get("steering_instability", 0.0))
+        panic_oscillation = float(features.get("panic_oscillation", features.get("panic_signature", 0.0)))
         throttle_commitment = float(features.get("throttle_commitment", 0.0))
-        throttle_term = min(throttle_commitment * c.throttle_gain, 100.0)
-        hesitation_pen = float(features.get("braking_hesitation", 0.0)) * c.hesitation_penalty
-        confidence_score = _clamp_0_100(
-            100.0 - ((100.0 - throttle_term) * c.throttle_term_weight + hesitation_pen)
+        braking_hesitation = float(features.get("braking_hesitation", 0.0))
+        micro_correction = float(features.get("micro_correction_freq", 0.0))
+        throttle_jitter = float(features.get("throttle_jitter", 0.0))
+        line_consistency = float(features.get("line_consistency", 50.0))
+        reaction_smoothness = float(features.get("reaction_smoothness", 50.0))
+
+        synthetic_hr = float(biometrics.get("synthetic_hr", weights.STRESS.hr_baseline))
+
+        # Stress
+        sw = weights.STRESS
+        steering_term = min(steering_instability * sw.steering_gain, 100.0)
+        hr_term = max(0.0, synthetic_hr - sw.hr_baseline) * sw.hr_gain
+        stress_score = _clamp_0_100(
+            steering_term * sw.steering
+            + hr_term * sw.heart_rate
+            + panic_oscillation * sw.panic
         )
 
+        # Confidence
+        cw = weights.CONFIDENCE
+        throttle_term = min(throttle_commitment * cw.throttle_gain, 100.0)
+        hesitation_pen = braking_hesitation * cw.hesitation_penalty
+        confidence_score = _clamp_0_100(
+            100.0 - ((100.0 - throttle_term) * cw.throttle_term_weight + hesitation_pen)
+        )
+
+        # Fatigue
+        fw = weights.FATIGUE
         cache["cumulative_fatigue"] += (
-            stress_score * f.stress_term
-            + float(features.get("steering_instability", 0.0)) * f.steering_term
+            stress_score * fw.stress_term
+            + steering_instability * fw.steering_term
         )
         fatigue_score = min(100.0, cache["cumulative_fatigue"])
+
+        # Tunnel vision
+        tunnel_vision_prob = 100.0 if stress_score > weights.PERSONA.panic_stress else 0.0
+
+        # Cognitive load
+        clw = weights.COGNITIVE_LOAD
+        cognitive_load_score = _clamp_0_100(
+            min(micro_correction * 5.0, 100.0) * clw.micro_correction
+            + min(throttle_jitter * 0.5, 100.0) * clw.throttle_jitter
+            + min(panic_oscillation * 3.0, 100.0) * clw.panic
+            + stress_score * clw.stress
+        )
+
+        # Attention stability
+        aw = weights.ATTENTION
+        attention_stability = _clamp_0_100(
+            confidence_score * aw.confidence
+            + _inv(stress_score) * aw.inv_stress
+            + _inv(min(steering_instability * sw.steering_gain, 100.0)) * aw.inv_steering_instability
+            + _inv(min(micro_correction * 5.0, 100.0)) * aw.inv_micro_correction
+        )
+
+        # Strategic reliability
+        srw = weights.STRATEGIC
+        strategic_reliability = _clamp_0_100(
+            confidence_score * srw.confidence
+            + attention_stability * srw.attention
+            + _inv(fatigue_score) * srw.inv_fatigue
+            + _inv(min(panic_oscillation * 3.0, 100.0)) * srw.inv_panic
+        )
+
+        # Panic probability
+        pw = weights.PANIC
+        panic_probability = _clamp_0_100(
+            min(panic_oscillation * pw.panic_oscillation_gain, 100.0)
+            * (1.0 - pw.stress_term - pw.tunnel_vision_term)
+            + stress_score * pw.stress_term
+            + tunnel_vision_prob * pw.tunnel_vision_term
+        )
+
+        # Emotional drift
+        cache["confidence_history"].append(confidence_score)
+        history = cache["confidence_history"]
+        if len(history) >= 5:
+            baseline = sum(history) / len(history)
+            drift_raw = abs(confidence_score - baseline) * weights.EMOTIONAL_DRIFT.drift_gain
+            emotional_drift = _clamp_0_100(drift_raw)
+        else:
+            emotional_drift = 0.0
 
         persona_state = persona.classify(
             stress=stress_score,
             confidence=confidence_score,
             fatigue=fatigue_score,
-            panic_oscillation=panic_term,
+            panic_oscillation=panic_oscillation,
             throttle_commitment=throttle_commitment,
         )
 
@@ -130,12 +202,10 @@ class CognitiveInferenceEngine:
             signal_directions=[
                 steering_term,
                 hr_term,
-                panic_term,
+                panic_oscillation,
                 -hesitation_pen,
             ],
         )
-
-        tunnel_vision = 100.0 if stress_score > weights.PERSONA.panic_stress else 0.0
 
         cognitive_state = {
             "driver_id": driver_id,
@@ -143,12 +213,21 @@ class CognitiveInferenceEngine:
             "stress_score": stress_score,
             "confidence_score": confidence_score,
             "fatigue_score": fatigue_score,
-            "tunnel_vision_prob": tunnel_vision,
+            "cognitive_load_score": cognitive_load_score,
+            "attention_stability": attention_stability,
+            "strategic_reliability": strategic_reliability,
+            "panic_probability": panic_probability,
+            "emotional_drift_score": emotional_drift,
+            "tunnel_vision_prob": tunnel_vision_prob,
             "persona_state": persona_state,
             "confidence_band": trust.band,
             "trust": trust.to_dict(),
             "weights_version": self.weights_snapshot["version"],
             "explainability_pending": True,
+            "context": {
+                "line_consistency": line_consistency,
+                "reaction_smoothness": reaction_smoothness,
+            },
         }
 
         self.producer.produce(
@@ -160,6 +239,7 @@ class CognitiveInferenceEngine:
 
         self._persist_state(cognitive_state)
         self._audit(cognitive_state, features, biometrics)
+        return cognitive_state
 
     def _persist_state(self, state: dict) -> None:
         try:
@@ -171,6 +251,11 @@ class CognitiveInferenceEngine:
                 .field("stress_score", float(state["stress_score"]))
                 .field("confidence_score", float(state["confidence_score"]))
                 .field("fatigue_score", float(state["fatigue_score"]))
+                .field("cognitive_load_score", float(state["cognitive_load_score"]))
+                .field("attention_stability", float(state["attention_stability"]))
+                .field("strategic_reliability", float(state["strategic_reliability"]))
+                .field("panic_probability", float(state["panic_probability"]))
+                .field("emotional_drift_score", float(state["emotional_drift_score"]))
                 .field("tunnel_vision_prob", float(state["tunnel_vision_prob"]))
                 .time(state["timestamp"], WritePrecision.NS)
             )

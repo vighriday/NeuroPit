@@ -22,7 +22,18 @@ def test_snapshot_is_json_serialisable():
 
 def test_snapshot_contains_every_section():
     snap = weights.snapshot()
-    assert set(snap.keys()) == {"version", "stress", "confidence", "fatigue", "persona"}
+    assert set(snap.keys()) == {
+        "version",
+        "stress",
+        "confidence",
+        "fatigue",
+        "cognitive_load",
+        "attention_stability",
+        "strategic_reliability",
+        "panic_probability",
+        "emotional_drift",
+        "persona",
+    }
 
 
 def test_dataclasses_are_frozen():

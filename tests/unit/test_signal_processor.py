@@ -46,6 +46,8 @@ def test_empty_window_returns_zeros():
         "braking_hesitation": 0.0,
         "throttle_commitment": 0.0,
         "panic_oscillation": 0.0,
+        "line_consistency": 50.0,
+        "reaction_smoothness": 50.0,
     }
 
 
