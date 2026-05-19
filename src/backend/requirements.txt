@@ -1,0 +1,44 @@
+# Core
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# Telemetry sources
+fastf1==3.1.2
+
+# Streaming
+confluent-kafka==2.3.0
+
+# Persistence
+influxdb-client==1.39.0
+qdrant-client==1.7.0
+
+# Inference
+numpy==1.26.2
+scipy==1.11.4
+pandas<2.1.0
+scikit-learn==1.4.0
+
+# Knowledge / IBM
+docling==1.7.0
+sentence-transformers==2.5.1
+
+# Orchestration
+langchain==0.1.16
+langchain-community==0.0.34
+
+# API gateway
+fastapi==0.108.0
+uvicorn[standard]==0.25.0
+websockets==12.0
+httpx==0.26.0
+
+# Auth / security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+cryptography==42.0.5
+
+# Testing
+pytest==8.0.0
+pytest-asyncio==0.23.5
+pytest-mock==3.12.0
