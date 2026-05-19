@@ -2,6 +2,10 @@
 
 ![NeuroPit logo](docs/assets/neuropit-logo.png)
 
+[![CI](https://github.com/vighriday/NeuroPit/actions/workflows/ci.yml/badge.svg)](https://github.com/vighriday/NeuroPit/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+[![IBM Granite](https://img.shields.io/badge/IBM-Granite-052FAD)](https://github.com/ibm-granite-community)
+
 NeuroPit is a real time Cognitive Twin Operating System for motorsport. Telemetry is infrastructure. Cognition is the product.
 
 Built for the IBM AI Builders Challenge powered by IBM SkillsBuild. Open source under Apache 2.0.

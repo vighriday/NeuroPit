@@ -6,6 +6,17 @@ The intention is that someone landing on the repository for the first time can s
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-19
+
+This release locks the Cognitive Twin Operating System positioning across every surface, switches the IBM Granite path to the open source community models, ships the brand identity, and prepares the repository for the IBM AI Builders Challenge submission. Operational readiness for the live demo is documented in `docs/DEMO_RUNBOOK.md`.
+
+### Open source posture
+
+- New `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `CONTRIBUTING.md`, and `SECURITY.md` cover the standard OSS hygiene checklist.
+- GitHub issue templates for bug reports and feature requests under `.github/ISSUE_TEMPLATE/`, plus a pull request template that enforces PRD mapping, cognitive twin impact, positioning check, tests, and changelog updates.
+- New GitHub Actions workflow at `.github/workflows/ci.yml` that runs the backend unit suite and the frontend type check on every push and every pull request.
+- README now carries a CI badge, an Apache 2.0 badge, and an IBM Granite badge so the community posture is visible at a glance on the GitHub landing page.
+
 ### IBM Granite via the community open source models
 
 - Granite client rewritten to default to local Hugging Face inference using `ibm-granite/granite-3.1-8b-instruct` from the [IBM Granite community](https://github.com/ibm-granite-community). No API key required. The model downloads from Hugging Face on first run and stays cached locally afterwards.

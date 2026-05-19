@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: NeuroPit canonical positioning
+    url: https://github.com/vighriday/NeuroPit/blob/main/docs/POSITIONING.md
+    about: Required reading before proposing any user facing change.
+  - name: PRD compliance audit
+    url: https://github.com/vighriday/NeuroPit/blob/main/docs/PRD_COMPLIANCE_AUDIT.md
+    about: Check whether the capability you want already exists.
