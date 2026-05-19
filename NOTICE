@@ -1,0 +1,26 @@
+NeuroPit
+Copyright 2026 Hriday <vighriday@gmail.com>
+
+This product includes software developed by Hriday and contributors to
+the NeuroPit project.
+
+Third party components used by this project remain the property of their
+respective owners and are distributed under their original licenses:
+
+  - IBM watsonx.ai and IBM Granite (IBM Corporation)
+  - IBM Docling (IBM Corporation, MIT License)
+  - Langflow (Apache License 2.0)
+  - FastF1 (MIT License)
+  - OpenF1 (data sourced through public APIs)
+  - Apache Kafka client libraries (Apache License 2.0)
+  - Redpanda (BSL 1.1)
+  - InfluxDB and InfluxDB Python client (MIT License)
+  - Qdrant and Qdrant Python client (Apache License 2.0)
+  - FastAPI (MIT License)
+  - Next.js (MIT License)
+  - Recharts (MIT License)
+  - Tailwind CSS (MIT License)
+
+NeuroPit was conceived, designed, and built for the IBM AI Builders
+Challenge powered by IBM SkillsBuild. It is offered to the community as
+an open scientific reference for cognitive motorsport intelligence.

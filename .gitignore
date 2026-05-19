@@ -53,6 +53,10 @@ data/processed/
 *.parquet
 *.feather
 
+# Keep curated knowledge sources tracked even though they live under data/
+!data/knowledge_sources/
+!data/knowledge_sources/**
+
 # Docling outputs
 docling_outputs/
 ontology_cache/
@@ -70,3 +74,8 @@ models/checkpoints/
 # OS
 Thumbs.db
 desktop.ini
+
+# Local tooling state
+.claude/
+.veris/
+docs/copilot_chat-*.txt
