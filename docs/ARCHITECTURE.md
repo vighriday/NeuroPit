@@ -2,13 +2,13 @@
 
 This is the working architecture document for NeuroPit V1. If you are reading this for the first time, start here. If you are about to add a new layer, update this file before you write a line of code. The Master Build Plan in `docs/MASTER_BUILD_PLAN.md` and the platform requirements document in the repo root describe what the system is supposed to do. This document describes how it is actually built.
 
-NeuroPit is a real time cognitive intelligence system for Formula racing. The core idea is simple. Racing teams already measure the car in great detail. They do not measure the driver in any meaningful way. NeuroPit treats the driver as a probabilistic signal that can be inferred from the telemetry the car is already producing, and it does that in a way the team can trust because every output comes with a written explanation.
+NeuroPit is a real time Cognitive Twin Operating System for motorsport. The car has been measured for decades. The mind inside the car has not. NeuroPit treats the driver as a probabilistic cognitive entity that can be inferred from the telemetry the car is already producing, and it does that under explainable AI principles a strategist can defend in a stewards meeting. Telemetry is the input layer. The product is the Cognitive Twin.
 
 ## What we are building, plainly
 
-A streaming pipeline that ingests racing telemetry, derives a small set of behavioural features per driver, fuses those features with telemetry conditioned synthetic biometrics, scores a handful of cognitive states such as stress, fatigue, and confidence, asks IBM Granite to explain those scores in natural language, and renders the result on a Mission Control dashboard that looks like the pit wall in a real Formula team.
+A streaming pipeline that ingests racing telemetry, derives behavioural features per driver, fuses those features with telemetry conditioned synthetic biometrics, computes the full nine score Cognitive Twin (stress, confidence, fatigue, cognitive load, attention stability, strategic reliability, panic probability, emotional drift, tunnel vision), runs the Emotional State Engine, the Predictive Failure Engine, the Ghost Lap AI, the Counterfactual Simulator, and the Strategy Parliament on top of that twin, asks IBM Granite to explain the readings in natural language grounded in the motorsport ontology, and renders everything on a Mission Control surface with dedicated Ghost Lap, Counterfactual, and Explainability dashboards.
 
-The five things that make NeuroPit different from a normal telemetry dashboard are the cognitive twin, the explainability layer, the uncertainty layer, the persona drift engine, and the audit log that captures every reasoning step. Everything else is plumbing that exists to make those five things possible.
+The seven things that make NeuroPit different from a generic telemetry analytics tool are the Cognitive Twin, the Emotional State Engine, the Persona Drift state machine, the Granite explainability layer grounded by Docling and Qdrant, the trust and uncertainty band that ships with every emission, the Strategy Parliament, and the audit log that captures every reasoning step. Everything else is plumbing that exists to make those seven things possible.
 
 ## Principles we will not bend on
 
