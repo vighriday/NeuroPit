@@ -1,5 +1,7 @@
 # NeuroPit
 
+![NeuroPit logo](docs/assets/neuropit-logo.png)
+
 NeuroPit is a real time Cognitive Twin Operating System for motorsport. Telemetry is infrastructure. Cognition is the product.
 
 Built for the IBM AI Builders Challenge powered by IBM SkillsBuild. Open source under Apache 2.0.
