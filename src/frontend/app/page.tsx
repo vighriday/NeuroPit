@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -11,10 +13,22 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Activity, AlertTriangle, Brain, Eye, Gauge, ShieldCheck, Sparkles, Target } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Brain,
+  Eye,
+  Gauge,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Wifi,
+} from "lucide-react";
 
 import { Footer } from "../components/Footer";
+import { MetricRing } from "../components/MetricRing";
 import { Nav } from "../components/Nav";
+import { PersonaTick, PersonaTimeline } from "../components/PersonaTimeline";
 
 type CognitiveSnapshot = {
   driver_id: string;
@@ -52,6 +66,14 @@ type EmotionalEvent = {
   dominant_probability: number;
 };
 
+type AnomalyEvent = {
+  driver_id: string;
+  timestamp: string;
+  source_persona: string;
+  source_confidence_band: string;
+  horizons: Record<string, Record<string, number>>;
+};
+
 type ChartPoint = {
   time: string;
   stress: number;
@@ -64,6 +86,7 @@ type IncomingEnvelope =
   | { channel: "cognitive-state-inference"; payload: CognitiveSnapshot }
   | { channel: "explanation-events"; payload: ExplanationEvent }
   | { channel: "emotional-events"; payload: EmotionalEvent }
+  | { channel: "anomaly-events"; payload: AnomalyEvent }
   | { channel: "heartbeat"; payload: { timestamp: string } }
   | { channel: string; payload: unknown };
 
@@ -78,22 +101,46 @@ function formatTime(iso: string): string {
   }
 }
 
-function bandColor(band: string): string {
+function bandStyle(band: string): { label: string; tone: string } {
   switch (band) {
     case "high":
-      return "text-green-400 border-green-700/50 bg-green-900/20";
+      return {
+        label: "STABLE LINK",
+        tone: "text-emerald-400 border-emerald-700/50 bg-emerald-900/20",
+      };
     case "moderate":
-      return "text-yellow-400 border-yellow-700/50 bg-yellow-900/20";
+      return {
+        label: "MODERATE BAND",
+        tone: "text-amber-300 border-amber-700/50 bg-amber-900/20",
+      };
     default:
-      return "text-red-400 border-red-700/50 bg-red-900/20";
+      return {
+        label: "UNSTABLE BAND",
+        tone: "text-red-400 border-red-700/50 bg-red-900/20",
+      };
   }
 }
 
+type DriverState = {
+  history: ChartPoint[];
+  persona: PersonaTick[];
+  latest: CognitiveSnapshot | null;
+  emotional: EmotionalEvent | null;
+  forecast: AnomalyEvent | null;
+};
+
+const emptyDriverState = (): DriverState => ({
+  history: [],
+  persona: [],
+  latest: null,
+  emotional: null,
+  forecast: null,
+});
+
 export default function MissionControl() {
-  const [history, setHistory] = useState<ChartPoint[]>([]);
-  const [latest, setLatest] = useState<CognitiveSnapshot | null>(null);
+  const [byDriver, setByDriver] = useState<Record<string, DriverState>>({});
   const [explanations, setExplanations] = useState<ExplanationEvent[]>([]);
-  const [emotional, setEmotional] = useState<EmotionalEvent | null>(null);
+  const [selectedDriver, setSelectedDriver] = useState<string | null>(null);
   const [linkUp, setLinkUp] = useState(false);
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
 
@@ -124,25 +171,42 @@ export default function MissionControl() {
         } catch {
           return;
         }
+
         if (envelope.channel === "cognitive-state-inference") {
           const snap = envelope.payload as CognitiveSnapshot;
-          setLatest(snap);
-          setHistory((prev) =>
-            [
-              ...prev,
-              {
-                time: formatTime(snap.timestamp),
-                stress: snap.stress_score,
-                confidence: snap.confidence_score,
-                fatigue: snap.fatigue_score,
-                panic: snap.panic_probability ?? 0,
-              },
-            ].slice(-60)
-          );
+          setByDriver((prev) => {
+            const next = { ...prev };
+            const ds = next[snap.driver_id] ?? emptyDriverState();
+            const point: ChartPoint = {
+              time: formatTime(snap.timestamp),
+              stress: snap.stress_score,
+              confidence: snap.confidence_score,
+              fatigue: snap.fatigue_score,
+              panic: snap.panic_probability ?? 0,
+            };
+            next[snap.driver_id] = {
+              ...ds,
+              latest: snap,
+              history: [...ds.history, point].slice(-90),
+              persona: [...ds.persona, { timestamp: snap.timestamp, persona: snap.persona_state }].slice(-60),
+            };
+            return next;
+          });
+          setSelectedDriver((current) => current ?? snap.driver_id);
         } else if (envelope.channel === "explanation-events") {
-          setExplanations((prev) => [envelope.payload as ExplanationEvent, ...prev].slice(0, 6));
+          setExplanations((prev) => [envelope.payload as ExplanationEvent, ...prev].slice(0, 8));
         } else if (envelope.channel === "emotional-events") {
-          setEmotional(envelope.payload as EmotionalEvent);
+          const evt = envelope.payload as EmotionalEvent;
+          setByDriver((prev) => {
+            const ds = prev[evt.driver_id] ?? emptyDriverState();
+            return { ...prev, [evt.driver_id]: { ...ds, emotional: evt } };
+          });
+        } else if (envelope.channel === "anomaly-events") {
+          const evt = envelope.payload as AnomalyEvent;
+          setByDriver((prev) => {
+            const ds = prev[evt.driver_id] ?? emptyDriverState();
+            return { ...prev, [evt.driver_id]: { ...ds, forecast: evt } };
+          });
         } else if (envelope.channel === "heartbeat") {
           setLastHeartbeat((envelope.payload as { timestamp: string }).timestamp);
         }
@@ -166,6 +230,10 @@ export default function MissionControl() {
     };
   }, []);
 
+  const drivers = useMemo(() => Object.keys(byDriver).sort(), [byDriver]);
+  const active = selectedDriver ? byDriver[selectedDriver] : null;
+  const latest = active?.latest ?? null;
+
   const stress = latest?.stress_score ?? 0;
   const confidence = latest?.confidence_score ?? 0;
   const fatigue = latest?.fatigue_score ?? 0;
@@ -176,13 +244,17 @@ export default function MissionControl() {
   const drift = latest?.emotional_drift_score ?? 0;
   const persona = latest?.persona_state ?? "Awaiting telemetry";
   const band = latest?.confidence_band ?? "unstable";
-  const bandStyle = useMemo(() => bandColor(band), [band]);
+  const bandView = useMemo(() => bandStyle(band), [band]);
+  const driverScopedExplanations = useMemo(
+    () => (selectedDriver ? explanations.filter((e) => e.driver_id === selectedDriver) : explanations),
+    [explanations, selectedDriver]
+  );
 
   return (
-    <main className="min-h-screen p-8">
+    <main className="min-h-screen p-6 md:p-8">
       <Nav />
 
-      <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
+      <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-center mb-6 border-b border-gray-800 pb-5">
         <div className="flex items-center gap-4">
           <Image
             src="/neuropit-logo.png"
@@ -193,102 +265,202 @@ export default function MissionControl() {
             className="rounded"
           />
           <div>
-            <h1 className="text-3xl font-bold tracking-widest uppercase">NeuroPit</h1>
-            <p className="text-gray-400 text-sm tracking-widest">
+            <h1 className="text-3xl md:text-4xl font-black tracking-[0.25em] uppercase">
+              Mission Control
+            </h1>
+            <p className="text-gray-400 text-[11px] tracking-[0.3em] uppercase mt-1">
               Cognitive Twin Operating System / Telemetry is infrastructure. Cognition is the product.
             </p>
           </div>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <div
-            className={`flex items-center gap-2 px-4 py-2 rounded border ${
+            className={`flex items-center gap-2 px-3 py-2 rounded border ${
               linkUp
-                ? "bg-red-900/20 border-red-900/50 text-red-400"
+                ? "bg-red-900/20 border-red-900/50 text-red-300"
                 : "bg-gray-900/40 border-gray-700 text-gray-400"
             }`}
           >
-            <div className={`w-2 h-2 rounded-full ${linkUp ? "bg-red-500 animate-pulse" : "bg-gray-500"}`} />
-            <span className="text-sm font-semibold tracking-wider">
+            <Wifi size={14} />
+            <span className="text-[11px] font-semibold tracking-[0.3em]">
               {linkUp ? "LIVE TELEMETRY" : "AWAITING LINK"}
             </span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                linkUp ? "bg-red-500 animate-pulse" : "bg-gray-500"
+              }`}
+            />
           </div>
-          <div className={`flex items-center gap-2 px-4 py-2 rounded border ${bandStyle}`}>
-            <ShieldCheck size={16} />
-            <span className="text-sm tracking-wider uppercase">{band} confidence</span>
+          <div className={`flex items-center gap-2 px-3 py-2 rounded border ${bandView.tone}`}>
+            <ShieldCheck size={14} />
+            <span className="text-[11px] tracking-[0.3em] uppercase">{bandView.label}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded border border-gray-800 bg-gray-900/40 text-gray-400 text-[11px] tracking-[0.3em] uppercase">
+            HEARTBEAT {lastHeartbeat ? formatTime(lastHeartbeat) : "...."}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <CognitiveTile label="Stress" value={stress} icon={<AlertTriangle className="text-red-500" />} accent="text-red-400" />
-        <CognitiveTile label="Confidence" value={confidence} icon={<Brain className="text-blue-500" />} accent="text-blue-400" />
-        <CognitiveTile label="Fatigue" value={fatigue} icon={<Activity className="text-yellow-500" />} accent="text-yellow-400" />
-        <CognitiveTile label="Cognitive load" value={cognitiveLoad} icon={<Gauge className="text-purple-500" />} accent="text-purple-300" />
-        <CognitiveTile label="Attention" value={attention} icon={<Eye className="text-cyan-400" />} accent="text-cyan-300" />
-        <CognitiveTile label="Strategic" value={strategic} icon={<Target className="text-emerald-400" />} accent="text-emerald-300" />
-        <CognitiveTile label="Panic prob" value={panicProb} icon={<AlertTriangle className="text-orange-400" />} accent="text-orange-300" />
-        <CognitiveTile label="Emotional drift" value={drift} icon={<Sparkles className="text-pink-400" />} accent="text-pink-300" />
+      <div className="flex flex-wrap gap-2 mb-6">
+        <span className="text-[10px] tracking-[0.3em] uppercase text-gray-500 self-center mr-2">
+          Driver
+        </span>
+        {drivers.length === 0 && (
+          <span className="text-xs text-gray-600">Awaiting first cognitive event</span>
+        )}
+        {drivers.map((driverId) => {
+          const ds = byDriver[driverId];
+          const dPersona = ds.latest?.persona_state ?? "Recovery";
+          const dBand = ds.latest?.confidence_band ?? "unstable";
+          const isActive = driverId === selectedDriver;
+          return (
+            <button
+              key={driverId}
+              onClick={() => setSelectedDriver(driverId)}
+              className={`px-3 py-2 rounded border transition-colors text-left ${
+                isActive
+                  ? "border-red-700/70 bg-red-900/30 text-red-200"
+                  : "border-gray-800 bg-gray-900/40 text-gray-400 hover:text-gray-200 hover:border-gray-600"
+              }`}
+            >
+              <div className="text-sm font-bold tracking-[0.25em] uppercase">{driverId}</div>
+              <div className="text-[10px] tracking-[0.25em] uppercase text-gray-500">
+                {dPersona} · {dBand}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 bg-neuropit-dark p-6 border border-gray-800 rounded">
-          <h2 className="text-gray-400 tracking-wider mb-2 flex items-center justify-between">
-            <span>REAL TIME COGNITIVE TRAJECTORY</span>
-            <span className="text-xs text-gray-500 uppercase">
-              Persona: {persona} / Driver: {latest?.driver_id ?? "n/a"} / Heartbeat:{" "}
-              {lastHeartbeat ? formatTime(lastHeartbeat) : "n/a"}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-neuropit-dark border border-gray-800 rounded p-5 flex flex-col items-center">
+          <MetricRing label="Stress" value={stress} accent="text-red-300" />
+        </div>
+        <div className="bg-neuropit-dark border border-gray-800 rounded p-5 flex flex-col items-center">
+          <MetricRing label="Confidence" value={confidence} accent="text-blue-300" inverted />
+        </div>
+        <div className="bg-neuropit-dark border border-gray-800 rounded p-5 flex flex-col items-center">
+          <MetricRing label="Fatigue" value={fatigue} accent="text-amber-300" />
+        </div>
+        <div className="bg-neuropit-dark border border-gray-800 rounded p-5 flex flex-col items-center">
+          <MetricRing label="Panic Prob" value={panicProb} accent="text-orange-300" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <SecondaryTile label="Cognitive load" value={cognitiveLoad} icon={<Gauge size={14} className="text-purple-300" />} accent="text-purple-200" />
+        <SecondaryTile label="Attention" value={attention} icon={<Eye size={14} className="text-cyan-300" />} accent="text-cyan-200" />
+        <SecondaryTile label="Strategic" value={strategic} icon={<Target size={14} className="text-emerald-300" />} accent="text-emerald-200" />
+        <SecondaryTile label="Emotional drift" value={drift} icon={<Sparkles size={14} className="text-pink-300" />} accent="text-pink-200" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-3 bg-neuropit-dark border border-gray-800 rounded p-5">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-[11px] tracking-[0.3em] uppercase text-gray-400">
+              Real time cognitive trajectory
+            </h2>
+            <span className="text-[10px] tracking-[0.3em] uppercase text-gray-500">
+              {selectedDriver ?? "—"} · {persona}
             </span>
-          </h2>
-          <div className="h-96">
+          </div>
+          <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={history}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis dataKey="time" stroke="#666" />
-                <YAxis stroke="#666" domain={[0, 100]} />
-                <Tooltip contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333" }} />
-                <Line type="monotone" dataKey="stress" stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="confidence" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="fatigue" stroke="#eab308" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="panic" stroke="#f97316" strokeWidth={2} dot={false} />
-              </LineChart>
+              <AreaChart data={active?.history ?? []}>
+                <defs>
+                  <linearGradient id="stressGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#ef4444" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="confidenceGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <XAxis dataKey="time" stroke="#4b5563" tick={{ fontSize: 10 }} />
+                <YAxis stroke="#4b5563" domain={[0, 100]} tick={{ fontSize: 10 }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#0a0a0a",
+                    border: "1px solid #374151",
+                    fontSize: 11,
+                  }}
+                />
+                <Area type="monotone" dataKey="stress" stroke="#ef4444" strokeWidth={2} fill="url(#stressGrad)" />
+                <Area type="monotone" dataKey="confidence" stroke="#3b82f6" strokeWidth={2} fill="url(#confidenceGrad)" />
+                <Line type="monotone" dataKey="fatigue" stroke="#eab308" strokeWidth={1.5} dot={false} />
+                <Line type="monotone" dataKey="panic" stroke="#f97316" strokeWidth={1.5} dot={false} />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
+          <div className="mt-4">
+            <h3 className="text-[10px] tracking-[0.3em] uppercase text-gray-500 mb-2">Persona drift</h3>
+            <PersonaTimeline ticks={active?.persona ?? []} />
+          </div>
         </div>
 
-        <div className="bg-neuropit-dark p-6 border border-gray-800 rounded flex flex-col">
-          <h2 className="text-gray-400 tracking-wider mb-4 flex items-center gap-2">
-            <Sparkles size={16} className="text-purple-400" />
-            IBM GRANITE EXPLAINABILITY
+        <div className="bg-neuropit-dark border border-gray-800 rounded p-5 flex flex-col">
+          <h2 className="text-[11px] tracking-[0.3em] uppercase text-gray-400 mb-3 flex items-center gap-2">
+            <Sparkles size={14} className="text-purple-300" />
+            IBM Granite explainability
           </h2>
-          <div className="flex-1 overflow-y-auto space-y-4 max-h-96">
-            {explanations.length === 0 ? (
-              <div className="border-l-2 border-gray-700 pl-4 py-2 text-gray-500 text-sm">
-                Waiting for the first cognitive evaluation. The reasoning panel will populate as the pipeline starts producing events.
+          <div className="flex-1 overflow-y-auto space-y-3 max-h-80 pr-1">
+            {driverScopedExplanations.length === 0 ? (
+              <div className="border-l-2 border-gray-700 pl-3 py-2 text-gray-500 text-xs">
+                Awaiting first reasoning event.
               </div>
             ) : (
-              explanations.map((ev, idx) => (
-                <div key={`${ev.timestamp}-${idx}`} className="border-l-2 border-blue-500 pl-4 py-2">
-                  <span className="text-xs text-blue-400 font-bold tracking-widest block mb-1">
-                    {ev.driver_id} {formatTime(ev.timestamp)}
-                    <span className="text-gray-500 ml-2 uppercase">via {ev.explanation.source}</span>
-                  </span>
-                  <p className="text-sm text-gray-300">{ev.explanation.text}</p>
+              driverScopedExplanations.map((ev, idx) => (
+                <div key={`${ev.timestamp}-${idx}`} className="border-l-2 border-blue-500 pl-3 py-1.5">
+                  <div className="text-[9px] tracking-[0.3em] uppercase text-blue-400 mb-1 flex justify-between">
+                    <span>
+                      {ev.driver_id} {formatTime(ev.timestamp)}
+                    </span>
+                    <span className="text-gray-500">via {ev.explanation.source}</span>
+                  </div>
+                  <p className="text-xs text-gray-200 leading-relaxed">{ev.explanation.text}</p>
                 </div>
               ))
             )}
           </div>
 
-          {emotional && (
-            <div className="mt-6 pt-4 border-t border-gray-800">
-              <div className="text-xs tracking-widest uppercase text-gray-500 mb-2">Emotional distribution</div>
-              <div className="text-sm text-gray-200">
-                Dominant: <span className="text-purple-300 font-semibold uppercase">{emotional.dominant_emotion}</span> ({(emotional.dominant_probability * 100).toFixed(1)}%)
+          {active?.emotional && (
+            <div className="mt-4 pt-3 border-t border-gray-800">
+              <div className="text-[10px] tracking-[0.3em] uppercase text-gray-500 mb-2">
+                Emotional distribution
               </div>
-              <div className="grid grid-cols-3 gap-1 mt-2 text-xs">
-                {Object.entries(emotional.distribution).map(([key, value]) => (
-                  <div key={key} className="border border-gray-800 rounded px-2 py-1">
-                    <span className="text-gray-500 uppercase">{key}</span>
-                    <span className="text-gray-100 float-right">{(value * 100).toFixed(0)}%</span>
+              <div className="text-xs text-gray-200 mb-2">
+                Dominant:{" "}
+                <span className="text-purple-300 font-bold uppercase">
+                  {active.emotional.dominant_emotion}
+                </span>{" "}
+                ({(active.emotional.dominant_probability * 100).toFixed(1)}%)
+              </div>
+              <div className="grid grid-cols-3 gap-1 text-[10px]">
+                {Object.entries(active.emotional.distribution).map(([key, value]) => (
+                  <div key={key} className="border border-gray-800 rounded px-1.5 py-1">
+                    <span className="text-gray-500 uppercase block leading-tight">{key}</span>
+                    <span className="text-gray-100">{(value * 100).toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {active?.forecast && (
+            <div className="mt-4 pt-3 border-t border-gray-800">
+              <div className="text-[10px] tracking-[0.3em] uppercase text-gray-500 mb-2 flex items-center gap-1">
+                <AlertTriangle size={11} className="text-orange-400" />
+                5s failure forecast
+              </div>
+              <div className="grid grid-cols-2 gap-1 text-[10px]">
+                {Object.entries(active.forecast.horizons["5s"] ?? {}).map(([key, value]) => (
+                  <div key={key} className="border border-gray-800 rounded px-1.5 py-1">
+                    <span className="text-gray-500 uppercase block leading-tight">
+                      {key.replace(/_/g, " ")}
+                    </span>
+                    <span className="text-orange-200">{(value * 100).toFixed(0)}%</span>
                   </div>
                 ))}
               </div>
@@ -302,7 +474,7 @@ export default function MissionControl() {
   );
 }
 
-function CognitiveTile({
+function SecondaryTile({
   label,
   value,
   icon,
@@ -314,14 +486,14 @@ function CognitiveTile({
   accent: string;
 }) {
   return (
-    <div className="bg-neuropit-dark p-4 border border-gray-800 rounded">
-      <div className="flex justify-between items-center mb-2">
-        <h2 className="text-gray-400 text-xs tracking-widest uppercase">{label}</h2>
+    <div className="bg-neuropit-dark border border-gray-800 rounded px-4 py-3">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-[10px] tracking-[0.3em] uppercase text-gray-500">{label}</span>
         {icon}
       </div>
-      <div className={`text-3xl font-bold ${accent}`}>
+      <div className={`text-2xl font-black tracking-tight ${accent}`}>
         {value.toFixed(1)}
-        <span className="text-xs text-gray-500 ml-1">/ 100</span>
+        <span className="text-[10px] text-gray-600 ml-1">/ 100</span>
       </div>
     </div>
   );

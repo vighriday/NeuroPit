@@ -79,10 +79,23 @@ def top_k_passages(
         return []
 
     vector = _embed_query(query)
+    results = []
     try:
-        results = client.search(collection_name=collection, query_vector=vector, limit=limit)
+        # qdrant-client 1.7 used `search`, 1.10+ uses `query_points`. Try new
+        # first, fall back to old. Both return objects with `.payload` and
+        # `.score` so the downstream loop is identical.
+        if hasattr(client, "query_points"):
+            response = client.query_points(
+                collection_name=collection,
+                query=vector,
+                limit=limit,
+                with_payload=True,
+            )
+            results = getattr(response, "points", response) or []
+        else:
+            results = client.search(collection_name=collection, query_vector=vector, limit=limit)
     except Exception as exc:
-        logger.info("Qdrant search failed, retrieval skipped: %s", exc)
+        logger.debug("Qdrant retrieval skipped: %s", exc)
         return []
 
     passages: List[RetrievedPassage] = []

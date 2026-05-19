@@ -146,15 +146,20 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        task = asyncio.create_task(_kafka_bridge(manager))
+        tasks = [
+            asyncio.create_task(_kafka_bridge(manager)),
+            asyncio.create_task(_heartbeat_loop(manager)),
+        ]
         try:
             yield
         finally:
-            task.cancel()
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
+            for task in tasks:
+                task.cancel()
+            for task in tasks:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
 
     app = FastAPI(
         title="NeuroPit Cognitive Gateway",
