@@ -8,6 +8,17 @@ export const metadata: Metadata = {
   title: "NeuroPit Cognitive Twin OS",
   description:
     "Real time Cognitive Twin Operating System for motorsport. Telemetry is infrastructure. Cognition is the product.",
+  icons: {
+    icon: "/neuropit-logo.png",
+    shortcut: "/neuropit-logo.png",
+    apple: "/neuropit-logo.png",
+  },
+  openGraph: {
+    title: "NeuroPit Cognitive Twin OS",
+    description:
+      "Real time Cognitive Twin Operating System for motorsport. Telemetry is infrastructure. Cognition is the product.",
+    images: ["/neuropit-logo.png"],
+  },
 };
 
 export default function RootLayout({

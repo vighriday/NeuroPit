@@ -6,6 +6,12 @@ The intention is that someone landing on the repository for the first time can s
 
 ## [Unreleased]
 
+### Brand and identity
+
+- NeuroPit logo committed at `NeuroPitLogo.png` (root, source asset), `src/frontend/public/neuropit-logo.png` (served by Next.js), and `docs/assets/neuropit-logo.png` (rendered inside markdown docs).
+- The logo now sits in the persistent nav across every dashboard page, in the Mission Control hero next to the title, and at the top of the README and the positioning document.
+- Layout metadata exposes the logo as the favicon, the Apple touch icon, and the Open Graph image. The browser tab and any link previews now carry the NeuroPit identity.
+
 ### Positioning lockdown
 
 - New `docs/POSITIONING.md` as the canonical narrative reference for every surface, slide, and demo line. Lists the language to use and the language to avoid. Mandatory reading before changing any user facing copy.
