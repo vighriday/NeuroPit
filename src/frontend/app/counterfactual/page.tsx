@@ -61,7 +61,7 @@ export default function CounterfactualPage() {
       <header className="mb-6">
         <h1 className="text-3xl font-bold tracking-widest uppercase">Counterfactual</h1>
         <p className="text-gray-400 text-sm tracking-widest mt-1">
-          Explore the five canonical what if scenarios from the PRD against a baseline lap.
+          Cognitive aware what if simulation. Adjust the driver cognitive state and watch the lap delta react.
         </p>
       </header>
 

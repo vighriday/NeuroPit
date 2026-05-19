@@ -1,10 +1,10 @@
 """Probabilistic Cognitive Inference Engine.
 
-Joins the per driver feature stream with the synthetic biometric stream and
-emits a cognitive twin state for every processing step. Every output carries
-a confidence band and a snapshot of the active weights so the dashboard, the
-explainability worker, and the audit log can each tell the same story about
-how a given number was produced.
+This is the core of the NeuroPit Cognitive Twin Operating System. Telemetry
+flows in. A probabilistic Cognitive Twin flows out. Every output carries a
+confidence band and a snapshot of the active weights so the surface, the
+IBM Granite explainable cognitive reasoning worker, and the audit log can
+each tell the same story about how a given number was produced.
 
 The engine emits the full nine score cognitive twin described in PRD section
 fifteen: stress, cognitive load, confidence, fatigue, tunnel vision, panic

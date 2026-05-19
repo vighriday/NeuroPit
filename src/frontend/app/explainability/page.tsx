@@ -109,7 +109,7 @@ export default function ExplainabilityPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-widest uppercase">Explainability</h1>
           <p className="text-gray-400 text-sm tracking-widest mt-1">
-            Live IBM Granite reasoning timeline, grounded in the motorsport ontology when available.
+            IBM Granite explainable cognitive reasoning, grounded in the motorsport cognition ontology.
           </p>
         </div>
         <div

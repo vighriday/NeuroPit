@@ -1,10 +1,13 @@
-"""Thin client around IBM watsonx.ai Granite models.
+"""IBM Granite explainable cognitive reasoning client.
 
-Two code paths live here. The first one talks to watsonx.ai through the
+This module is the bridge between the probabilistic Cognitive Twin and the
+human readable explanation a strategist sees on the Mission Control surface.
+Two code paths live here. The first one talks to IBM watsonx.ai through the
 public REST endpoint when an API key and project id are configured. The
-second one is a local stub that produces a templated explanation built from
-the same numerical inputs. The stub exists so the dashboard always has
-something coherent to show, even when the cloud is unreachable.
+second one is a local templated stub that produces an explanation from the
+same numerical inputs. The stub exists so the surface always has coherent
+explainable cognitive reasoning to show, even when the cloud is
+unreachable.
 
 Both paths return a dictionary with the same shape:
 
