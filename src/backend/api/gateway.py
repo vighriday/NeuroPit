@@ -1,13 +1,18 @@
 """FastAPI gateway between the cognitive pipeline and the dashboard.
 
-Exposes a small REST surface for the Ghost Lap, counterfactual, and
-parliament endpoints, plus a single WebSocket channel that fans out the
-cognitive state stream and the Granite explanations to the Next.js Mission
-Control dashboard.
+Exposes a small REST surface for the Ghost Lap, counterfactual, parliament,
+emotional, post race, and token endpoints, plus a single WebSocket channel
+that fans out the cognitive state stream and the Granite explanations to the
+Next.js Mission Control dashboard.
 
 The Kafka bridge runs as a background task. When the broker is unreachable
 the gateway stays up and the dashboard sees a synthetic heartbeat so the
 operator can tell the difference between a quiet race and a broken stack.
+
+Authentication is enforced through a bearer token. In development the
+default JWT secret in `.env.example` puts the gateway in anonymous mode so a
+fresh checkout runs without ceremony. Setting a real secret in `.env`
+immediately requires every protected route to present a bearer token.
 """
 
 from __future__ import annotations
@@ -19,11 +24,16 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Set
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.backend.api import schemas
 from src.backend.config import get_settings
+from src.backend.inference.emotional_state import evaluate as evaluate_emotion
+from src.backend.reporting.post_race import build_report
+from src.backend.security import roles as roles_registry
+from src.backend.security.auth import current_claims, require_scopes
+from src.backend.security.tokens import TokenClaims, issue_token
 from src.backend.simulation import counterfactual as counterfactual_engine
 from src.backend.simulation.ghost_lap import LapCognitiveSummary, attribute_lost_time
 from src.backend.strategy import parliament
@@ -58,7 +68,6 @@ class ConnectionManager:
 
 
 async def _kafka_bridge(manager: ConnectionManager) -> None:
-    """Forward cognitive and explanation events from Kafka to the dashboard."""
     settings = get_settings()
     try:
         from confluent_kafka import Consumer
@@ -74,7 +83,14 @@ async def _kafka_bridge(manager: ConnectionManager) -> None:
             "auto.offset.reset": "latest",
         }
     )
-    consumer.subscribe(["cognitive-state-inference", "explanation-events"])
+    consumer.subscribe(
+        [
+            "cognitive-state-inference",
+            "explanation-events",
+            "emotional-events",
+            "anomaly-events",
+        ]
+    )
 
     try:
         while True:
@@ -89,10 +105,7 @@ async def _kafka_bridge(manager: ConnectionManager) -> None:
                 payload = json.loads(msg.value().decode("utf-8"))
             except Exception:
                 continue
-            envelope = {
-                "channel": msg.topic(),
-                "payload": payload,
-            }
+            envelope = {"channel": msg.topic(), "payload": payload}
             await manager.broadcast(envelope)
     finally:
         consumer.close()
@@ -107,6 +120,21 @@ async def _heartbeat_loop(manager: ConnectionManager) -> None:
             }
         )
         await asyncio.sleep(2.0)
+
+
+def _scope_dependency(*required: str):
+    """Build a FastAPI dependency that wires the bearer token check to scopes."""
+
+    def _dependency(claims: TokenClaims = Depends(current_claims)) -> TokenClaims:
+        for scope in required:
+            if not roles_registry.has_scope(claims.role, scope):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Role {claims.role!r} does not have scope {scope!r}",
+                )
+        return claims
+
+    return _dependency
 
 
 def create_app() -> FastAPI:
@@ -126,7 +154,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="NeuroPit Gateway",
-        version="0.1.0",
+        version="0.2.0",
         description="Bridge between the cognitive pipeline and the Mission Control dashboard.",
         lifespan=lifespan,
     )
@@ -143,8 +171,24 @@ def create_app() -> FastAPI:
     def healthz() -> dict:
         return {"status": "ok", "service": "neuropit-gateway"}
 
+    @app.post("/auth/token", response_model=schemas.TokenResponse)
+    def mint_token(req: schemas.TokenRequest) -> schemas.TokenResponse:
+        try:
+            roles_registry.get_role(req.role)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        token = issue_token(req.subject, req.role, req.expires_in_seconds)
+        return schemas.TokenResponse(
+            access_token=token,
+            expires_in_seconds=req.expires_in_seconds or get_settings().api_token_expiry_minutes * 60,
+            role=req.role,
+        )
+
     @app.post("/ghost-lap", response_model=schemas.GhostLapResponse)
-    def ghost_lap(req: schemas.LapSummaryRequest) -> schemas.GhostLapResponse:
+    def ghost_lap(
+        req: schemas.LapSummaryRequest,
+        _claims: TokenClaims = Depends(_scope_dependency("read:ghost_lap")),
+    ) -> schemas.GhostLapResponse:
         summary = LapCognitiveSummary(
             lap_number=req.lap_number,
             driver_id=req.driver_id,
@@ -164,7 +208,11 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/counterfactual/{scenario}", response_model=schemas.CounterfactualResponse)
-    def counterfactual(scenario: str, req: schemas.LapSummaryRequest) -> schemas.CounterfactualResponse:
+    def counterfactual(
+        scenario: str,
+        req: schemas.LapSummaryRequest,
+        _claims: TokenClaims = Depends(_scope_dependency("write:counterfactual")),
+    ) -> schemas.CounterfactualResponse:
         if scenario not in counterfactual_engine.SCENARIOS:
             raise HTTPException(status_code=404, detail=f"Unknown scenario {scenario!r}")
         summary = LapCognitiveSummary(
@@ -186,7 +234,10 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/parliament", response_model=schemas.ParliamentResponse)
-    def parliament_endpoint(req: schemas.ParliamentRequest) -> schemas.ParliamentResponse:
+    def parliament_endpoint(
+        req: schemas.ParliamentRequest,
+        _claims: TokenClaims = Depends(_scope_dependency("read:strategy")),
+    ) -> schemas.ParliamentResponse:
         report = parliament.convene(req.model_dump())
         return schemas.ParliamentResponse(
             consensus=report.consensus,
@@ -204,6 +255,33 @@ def create_app() -> FastAPI:
             ],
             transcript=report.transcript,
         )
+
+    @app.post("/emotional", response_model=schemas.EmotionalEvaluationResponse)
+    def emotional_endpoint(
+        req: schemas.EmotionalEvaluationRequest,
+        _claims: TokenClaims = Depends(_scope_dependency("read:cognitive")),
+    ) -> schemas.EmotionalEvaluationResponse:
+        report = evaluate_emotion(
+            cognitive_state=req.cognitive_state,
+            features=req.features,
+            biometrics=req.biometrics,
+        )
+        return schemas.EmotionalEvaluationResponse(
+            driver_id=report.driver_id or req.cognitive_state.get("driver_id", ""),
+            timestamp=report.timestamp or req.cognitive_state.get("timestamp", ""),
+            distribution=report.distribution,
+            dominant_emotion=report.dominant_emotion,
+            dominant_probability=report.dominant_probability,
+        )
+
+    @app.get("/reports/{session_id}", response_model=schemas.PostRaceReportResponse)
+    def post_race_report(
+        session_id: str,
+        _claims: TokenClaims = Depends(_scope_dependency("read:audit")),
+    ) -> schemas.PostRaceReportResponse:
+        normalised = None if session_id in {"_all", "all"} else session_id
+        report = build_report(normalised)
+        return schemas.PostRaceReportResponse(**report)
 
     @app.websocket("/ws/cognitive")
     async def cognitive_socket(websocket: WebSocket) -> None:

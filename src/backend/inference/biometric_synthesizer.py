@@ -5,6 +5,13 @@ This module never emits a value without tagging it as synthetic so nothing
 downstream can confuse it with real wearable data. The PRD calls these
 "telemetry conditioned synthetic biometrics" and that label travels with
 every payload.
+
+In line with the PRD privacy requirements, the raw heart rate and HRV
+values are also encrypted at rest using the project Fernet helper. The
+encrypted payload is published alongside the plaintext numbers so the
+cognitive engine continues to work without ceremony, but a downstream
+persistence layer can choose to drop the plaintext fields when storing
+biometric data to disk.
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ from typing import Optional
 from confluent_kafka import Consumer, Producer
 
 from src.backend.config import get_settings
+from src.backend.security.crypto import encrypt
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +69,26 @@ class BiometricSynthesizer:
             hrv_delta += 0.5
         state["current_hrv"] = min(80.0, max(15.0, state["current_hrv"] + hrv_delta))
 
+        respiration = float(20.0 + (state["current_hr"] - 140) * 0.2)
+
+        encrypted_payload = encrypt(
+            json.dumps(
+                {
+                    "synthetic_hr": state["current_hr"],
+                    "synthetic_hrv": state["current_hrv"],
+                    "respiration_rate": respiration,
+                }
+            )
+        )
+
         return {
             "driver_id": driver_id,
             "timestamp": features.get("timestamp"),
             "synthetic_hr": float(state["current_hr"]),
             "synthetic_hrv": float(state["current_hrv"]),
-            "respiration_rate": float(20.0 + (state["current_hr"] - 140) * 0.2),
+            "respiration_rate": respiration,
             "source": "synthetic",
+            "encrypted_payload": encrypted_payload,
         }
 
     def run(self) -> None:

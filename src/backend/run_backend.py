@@ -55,6 +55,12 @@ def run_explainability():
     ExplainabilityWorker().run()
 
 
+def run_emotional_state():
+    from src.backend.inference.emotional_state_worker import EmotionalStateWorker
+
+    EmotionalStateWorker().run()
+
+
 def run_influx_writer():
     from src.backend.integration.influx_writer import InfluxDBWriter
 
@@ -65,6 +71,7 @@ WORKERS = (
     ("FeatureExtractor", run_features),
     ("BiometricSynthesizer", run_biometrics),
     ("CognitiveEngine", run_cognition),
+    ("EmotionalStateWorker", run_emotional_state),
     ("PredictiveFailureEngine", run_failure_engine),
     ("ExplainabilityWorker", run_explainability),
     ("InfluxDBWriter", run_influx_writer),

@@ -7,7 +7,7 @@ fishing for fields at runtime.
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,11 @@ class CognitiveSnapshot(BaseModel):
     stress_score: float = Field(ge=0.0, le=100.0)
     confidence_score: float = Field(ge=0.0, le=100.0)
     fatigue_score: float = Field(ge=0.0, le=100.0)
+    cognitive_load_score: float = Field(default=0.0, ge=0.0, le=100.0)
+    attention_stability: float = Field(default=0.0, ge=0.0, le=100.0)
+    strategic_reliability: float = Field(default=0.0, ge=0.0, le=100.0)
+    panic_probability: float = Field(default=0.0, ge=0.0, le=100.0)
+    emotional_drift_score: float = Field(default=0.0, ge=0.0, le=100.0)
     tunnel_vision_prob: float = Field(ge=0.0, le=100.0)
     persona_state: str
     confidence_band: str
@@ -28,6 +33,7 @@ class ExplanationPayload(BaseModel):
     source: str
     model: str
     tokens: Optional[int] = None
+    grounding: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class ExplanationEvent(BaseModel):
@@ -89,3 +95,38 @@ class ParliamentResponse(BaseModel):
     tally: Dict[str, float]
     proposals: List[ParliamentProposal]
     transcript: str
+
+
+class EmotionalEvaluationRequest(BaseModel):
+    cognitive_state: Dict[str, Any]
+    features: Dict[str, Any] = Field(default_factory=dict)
+    biometrics: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EmotionalEvaluationResponse(BaseModel):
+    driver_id: str
+    timestamp: str
+    distribution: Dict[str, float]
+    dominant_emotion: str
+    dominant_probability: float
+
+
+class PostRaceReportResponse(BaseModel):
+    session_id: Optional[str] = None
+    generated_on: str
+    driver_count: int
+    total_evaluations: int
+    drivers: Dict[str, Any]
+
+
+class TokenRequest(BaseModel):
+    subject: str
+    role: str
+    expires_in_seconds: Optional[int] = None
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in_seconds: int
+    role: str
