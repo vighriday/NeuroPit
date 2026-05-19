@@ -68,6 +68,16 @@ models/checkpoints/
 *.onnx
 *.bin
 
+# Hugging Face cache (Granite weights download on first run)
+.huggingface/
+huggingface_cache/
+
+# Stray top level logo copies. The canonical assets live at
+# docs/assets/neuropit-logo.png and src/frontend/public/neuropit-logo.png.
+/NeuroPitLogo.png
+/NeuroPitLogo.jpg
+/NeuroPitLogo.svg
+
 # Docker
 .docker/
 

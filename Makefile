@@ -15,9 +15,12 @@ help:
 	@echo "  infra-down   stop the local docker stack"
 	@echo "  bootstrap    create kafka topics and qdrant collections"
 	@echo "  stream       replay the default historical session through the streamer"
-	@echo "  backend      run the full backend worker pool"
+	@echo "  backend      run the full cognitive worker pool"
+	@echo "  gateway      run the FastAPI cognitive gateway"
+	@echo "  frontend     run the Mission Control surface (Next.js)"
 	@echo "  test         run the fast unit test suite"
 	@echo "  integration  run the integration tests (requires running infra)"
+	@echo "  clean        remove pytest, mypy, ruff and python bytecode caches"
 
 install:
 	$(PYTHON) -m pip install -r src/backend/requirements.txt
