@@ -1,0 +1,64 @@
+{
+  "name": "NeuroPit Strategy Parliament",
+  "description": "Reference Langflow definition for the NeuroPit cognitive strategy pipeline. Import into a local Langflow instance to visualise and adjust the chain of agents that produce a strategist recommendation. The runtime implementation of this chain lives in src/backend/strategy/parliament.py and src/backend/reasoning/granite_client.py.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "kafka_cognitive_state",
+      "type": "kafka_consumer",
+      "description": "Subscribes to the cognitive-state-inference topic.",
+      "config": {
+        "topic": "cognitive-state-inference",
+        "group_id": "langflow-parliament",
+        "bootstrap_servers": "${KAFKA_BROKER_URL}"
+      }
+    },
+    {
+      "id": "qdrant_motorsport_ontology",
+      "type": "qdrant_retriever",
+      "description": "Pulls the top three motorsport ontology passages relevant to the current state.",
+      "config": {
+        "collection": "motorsport_ontology",
+        "host": "${QDRANT_HOST}",
+        "port": "${QDRANT_PORT}",
+        "top_k": 3
+      }
+    },
+    {
+      "id": "strategy_parliament",
+      "type": "python_callable",
+      "description": "Runs the seven specialised strategy agents and produces a consensus.",
+      "config": {
+        "module": "src.backend.strategy.parliament",
+        "callable": "convene"
+      }
+    },
+    {
+      "id": "granite_reasoner",
+      "type": "watsonx_granite",
+      "description": "Generates the natural language strategic recommendation from the parliament transcript.",
+      "config": {
+        "model_id": "${GRANITE_MODEL_ID}",
+        "endpoint": "${WATSONX_URL}",
+        "fallback_module": "src.backend.reasoning.granite_client.GraniteClient"
+      }
+    },
+    {
+      "id": "kafka_explanation_publisher",
+      "type": "kafka_producer",
+      "description": "Publishes the final recommendation to the explanation-events topic.",
+      "config": {
+        "topic": "explanation-events",
+        "bootstrap_servers": "${KAFKA_BROKER_URL}"
+      }
+    }
+  ],
+  "edges": [
+    { "source": "kafka_cognitive_state", "target": "strategy_parliament" },
+    { "source": "kafka_cognitive_state", "target": "qdrant_motorsport_ontology" },
+    { "source": "strategy_parliament", "target": "granite_reasoner" },
+    { "source": "qdrant_motorsport_ontology", "target": "granite_reasoner" },
+    { "source": "granite_reasoner", "target": "kafka_explanation_publisher" }
+  ],
+  "notes": "This file is documentation as much as configuration. The actual orchestration runs through the Python modules referenced above. Keeping the flow in version control makes the architecture reviewable inside Langflow without depending on a long lived Langflow server."
+}
