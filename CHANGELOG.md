@@ -4,6 +4,64 @@ All notable changes to NeuroPit live here. We follow [Keep a Changelog](https://
 
 The intention is that someone landing on the repository for the first time can scan this file and understand what shipped when, what is in progress, and where to look for the detail.
 
+## [0.2.0] - 2026-05-19
+
+This release closes every PRD gap that was open after 0.1.0. NeuroPit is now positioned, in code and in documentation, as a real time Cognitive Twin Operating System for motorsport rather than a telemetry analytics platform. Telemetry is the input. The Cognitive Twin is the product.
+
+### Cognitive completeness
+
+- Cognitive Inference Engine emits the full nine score twin described in PRD section fifteen: stress, confidence, fatigue, cognitive load, attention stability, strategic reliability, panic probability, emotional drift, tunnel vision. Persona state and confidence band travel alongside on every emission.
+- New cognitive weights for cognitive load, attention stability, strategic reliability, panic probability, and emotional drift are versioned alongside the existing constants in `src/backend/common/weights.py` and stamped onto every audit log row.
+- `docs/COGNITIVE_METHODOLOGY.md` still describes the underlying equations. The audit log captures the active weights so historical replays remain reproducible after the constants move.
+
+### Emotional state engine
+
+- New `src/backend/inference/emotional_state.py` that emits a normalised probability distribution across confidence, fear, panic, frustration, aggression, recovery, overconfidence, hesitation, and caution.
+- New `src/backend/inference/emotional_state_worker.py` that joins the cognitive, feature, and biometric streams and publishes to the `emotional-events` topic.
+- New `/emotional` FastAPI endpoint that returns the same distribution for any cognitive state payload.
+
+### Telemetry intelligence
+
+- `line_consistency` and `reaction_smoothness` features added to `src/backend/feature_engineering/signal_processor.py` so the PRD section fourteen feature set is now complete.
+
+### Knowledge grounding
+
+- New `src/backend/knowledge/retriever.py` that pulls the top three motorsport ontology passages from Qdrant for a given query and degrades cleanly when Qdrant or the optional embedding library are not available.
+- IBM Granite explanations are now grounded against the retrieved passages on both the cloud and the stub path. The grounding entries travel inside the explanation payload so the dashboard can render the source documents alongside the reasoning paragraph.
+
+### Post race intelligence
+
+- New `src/backend/reporting/post_race.py` that assembles the per driver cognitive summary, confidence reconstruction timeline, Ghost Lap result, full counterfactual sweep, and Granite explanation tail from the audit log.
+- New `/reports/{session_id}` FastAPI endpoint backed by that builder. The literal `all` segment returns the cross session report when only one session has been recorded so far, which matches the demo flow.
+
+### Security and privacy enforcement
+
+- New `src/backend/security/auth.py` dependency that enforces bearer tokens on every protected gateway route. The Mission Control surface continues to work in development because the dependency falls back to an anonymous Neuro Analyst claim set when the JWT secret is left at its dev default.
+- New `/auth/token` FastAPI endpoint that mints a JWT for a known role so the dashboard can switch personas at runtime.
+- Biometric synthesiser now encrypts the heart rate, HRV, and respiration payload through the project Fernet helper before publishing. The plaintext numeric fields still flow so downstream consumers do not change.
+
+### Reliability and replay
+
+- New `src/backend/integration/influx_replay.py` that reads historical raw telemetry from InfluxDB and republishes it onto the raw topic so a broker outage does not cost the demo any data.
+
+### Shared domain models
+
+- `src/backend/ingestion/models.py` now contains `Race`, `Session`, `CognitiveState`, `EmotionalState`, `Simulation`, `StrategyRecommendation`, and `ConfidenceReport` in addition to the existing telemetry models. Every API schema in `src/backend/api/schemas.py` mirrors the domain models so the dashboard sees the same shapes the workers emit.
+
+### Mission Control surface
+
+- New `/ghost-lap`, `/counterfactual`, and `/explainability` pages under `src/frontend/app/`. Each one talks to the FastAPI gateway and renders the cognitive intelligence behind the corresponding REST endpoint.
+- Persistent navigation in `src/frontend/components/Nav.tsx`. Shared API helpers in `src/frontend/lib/api.ts`.
+- Mission Control tile grid extended from three tiles to eight to surface the new cognitive load, attention stability, strategic reliability, panic probability, and emotional drift scores. The trajectory chart now plots panic probability alongside stress, confidence, and fatigue, and the right hand panel renders the live emotional distribution.
+
+### Tests
+
+- One hundred and two unit tests in total, all green, with new coverage for the cognitive engine end to end, the emotional state engine, the Qdrant retriever, the post race report builder, the biometric encryption pipeline, the security helpers, the gateway scope enforcement, and the shared domain models.
+
+### Positioning
+
+- README, ARCHITECTURE, and PRD compliance audit rewritten to consistently use the Cognitive Twin Operating System framing. Telemetry is described as infrastructure. Cognition is described as the product. The moat is real time probabilistic cognition inference from racing telemetry plus IBM Granite explainability grounded against the motorsport ontology.
+
 ## [0.1.0] - 2026-05-19
 
 This is the first end to end release of NeuroPit. The system can ingest a real Formula session, infer the driver's cognitive state in near real time, explain that state through IBM Granite or a local stub, project failure probabilities across four horizons, simulate counterfactual race scenarios, and surface every output on a Mission Control dashboard.
