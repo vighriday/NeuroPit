@@ -13,7 +13,8 @@ Both paths return a dictionary with the same shape:
   "text": str,
   "source": "watsonx" | "stub",
   "model": str,
-  "tokens": int | None
+  "tokens": int | None,
+  "grounding": list[dict]
 }
 ```
 
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+from typing import List, Optional
 
 import httpx
 
@@ -40,16 +41,46 @@ class GraniteClient:
         self.settings = settings_obj or get_settings()
 
     def explain(self, cognitive_state: dict, prompt_hint: Optional[str] = None) -> dict:
+        grounding = self._load_grounding(cognitive_state)
         if self.settings.granite_use_stub or not self.settings.watsonx_api_key:
-            return self._stub_explanation(cognitive_state, prompt_hint)
+            return self._stub_explanation(cognitive_state, prompt_hint, grounding)
 
         try:
-            return self._call_watsonx(cognitive_state, prompt_hint)
+            return self._call_watsonx(cognitive_state, prompt_hint, grounding)
         except Exception as exc:
             logger.warning("Granite cloud call failed, falling back to stub: %s", exc)
-            return self._stub_explanation(cognitive_state, prompt_hint)
+            return self._stub_explanation(cognitive_state, prompt_hint, grounding)
 
-    def _stub_explanation(self, state: dict, prompt_hint: Optional[str]) -> dict:
+    def _load_grounding(self, state: dict) -> List[dict]:
+        """Pull a few motorsport ontology passages relevant to this reading.
+
+        Imported lazily so the unit tests for the stub path can avoid
+        depending on a running Qdrant or on the optional embedding library.
+        """
+        try:
+            from src.backend.knowledge.retriever import top_k_passages
+
+            query_terms = [
+                state.get("persona_state", ""),
+                state.get("confidence_band", ""),
+                "driver stress" if float(state.get("stress_score", 0.0)) > 60.0 else "driver focus",
+            ]
+            query = " ".join(term for term in query_terms if term)
+            passages = top_k_passages(query=query or "driver cognitive state", limit=3)
+            return [
+                {
+                    "document_title": p.document_title,
+                    "source_path": p.source_path,
+                    "score": round(p.score, 4),
+                    "snippet": p.text[:240],
+                }
+                for p in passages
+            ]
+        except Exception as exc:
+            logger.debug("Grounding retrieval skipped: %s", exc)
+            return []
+
+    def _stub_explanation(self, state: dict, prompt_hint: Optional[str], grounding: List[dict]) -> dict:
         stress = float(state.get("stress_score", 0.0))
         confidence = float(state.get("confidence_score", 0.0))
         fatigue = float(state.get("fatigue_score", 0.0))
@@ -83,6 +114,8 @@ class GraniteClient:
             + ", ".join(bits)
             + f". This reading carries a {band} confidence band."
         )
+        if grounding:
+            narrative += f" Grounded against {len(grounding)} reference passage(s) from the motorsport ontology."
         if prompt_hint:
             narrative += f" Context note: {prompt_hint}."
 
@@ -91,11 +124,12 @@ class GraniteClient:
             "source": "stub",
             "model": "neuropit-granite-stub",
             "tokens": None,
+            "grounding": grounding,
         }
 
-    def _call_watsonx(self, state: dict, prompt_hint: Optional[str]) -> dict:
+    def _call_watsonx(self, state: dict, prompt_hint: Optional[str], grounding: List[dict]) -> dict:
         endpoint = self.settings.watsonx_url.rstrip("/") + "/ml/v1/text/generation?version=2024-05-01"
-        prompt = self._build_prompt(state, prompt_hint)
+        prompt = self._build_prompt(state, prompt_hint, grounding)
 
         payload = {
             "model_id": self.settings.granite_model_id,
@@ -103,7 +137,7 @@ class GraniteClient:
             "input": prompt,
             "parameters": {
                 "decoding_method": "greedy",
-                "max_new_tokens": 200,
+                "max_new_tokens": 220,
                 "min_new_tokens": 40,
                 "stop_sequences": ["\n\n"],
             },
@@ -130,15 +164,21 @@ class GraniteClient:
             "source": "watsonx",
             "model": self.settings.granite_model_id,
             "tokens": body.get("results", [{}])[0].get("generated_token_count"),
+            "grounding": grounding,
         }
 
     @staticmethod
-    def _build_prompt(state: dict, prompt_hint: Optional[str]) -> str:
+    def _build_prompt(state: dict, prompt_hint: Optional[str], grounding: List[dict]) -> str:
         cleaned = {
             "driver_id": state.get("driver_id"),
             "stress_score": state.get("stress_score"),
             "confidence_score": state.get("confidence_score"),
             "fatigue_score": state.get("fatigue_score"),
+            "cognitive_load_score": state.get("cognitive_load_score"),
+            "attention_stability": state.get("attention_stability"),
+            "strategic_reliability": state.get("strategic_reliability"),
+            "panic_probability": state.get("panic_probability"),
+            "emotional_drift_score": state.get("emotional_drift_score"),
             "tunnel_vision_prob": state.get("tunnel_vision_prob"),
             "persona_state": state.get("persona_state"),
             "confidence_band": state.get("confidence_band"),
@@ -152,5 +192,12 @@ class GraniteClient:
             "language that obscures the call to action.\n\n"
         )
         body = "Reading: " + json.dumps(cleaned)
+        if grounding:
+            grounding_block = "\nReference passages:\n" + "\n".join(
+                f"- {entry.get('document_title', 'untitled')}: {entry.get('snippet', '')}"
+                for entry in grounding
+            )
+        else:
+            grounding_block = ""
         suffix = f"\nContext note: {prompt_hint}" if prompt_hint else ""
-        return prefix + body + suffix + "\n\nExplanation:"
+        return prefix + body + grounding_block + suffix + "\n\nExplanation:"

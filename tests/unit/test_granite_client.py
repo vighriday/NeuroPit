@@ -60,10 +60,17 @@ def test_stub_mentions_low_confidence_when_below_floor():
 
 
 def test_prompt_includes_reading_payload():
-    prompt = GraniteClient._build_prompt(_state(), None)
+    prompt = GraniteClient._build_prompt(_state(), None, [])
     assert "stress_score" in prompt
     assert "VER" in prompt
     assert prompt.endswith("Explanation:")
+
+
+def test_prompt_includes_grounding_when_present():
+    grounding = [{"document_title": "FIA report", "snippet": "driver fatigue increases steering instability"}]
+    prompt = GraniteClient._build_prompt(_state(), None, grounding)
+    assert "Reference passages" in prompt
+    assert "FIA report" in prompt
 
 
 def test_cloud_path_uses_settings(monkeypatch):
