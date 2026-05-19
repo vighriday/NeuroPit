@@ -1,9 +1,13 @@
-"""FastAPI gateway between the cognitive pipeline and the dashboard.
+"""Cognitive gateway over the NeuroPit Cognitive Twin Operating System.
 
-Exposes a small REST surface for the Ghost Lap, counterfactual, parliament,
-emotional, post race, and token endpoints, plus a single WebSocket channel
-that fans out the cognitive state stream and the Granite explanations to the
-Next.js Mission Control dashboard.
+The gateway is a surface, not a product. It exposes the Probabilistic
+Cognitive Inference Engine, the Emotional State Engine, the IBM Granite
+explainable cognitive reasoning layer, the Ghost Lap AI, the counterfactual
+simulator, and the strategy parliament to authenticated clients. The
+Mission Control surface in `src/frontend` is one of those clients. Other
+trusted services (a race engineer console, a stewards review tool, a
+research notebook) can read the same Cognitive Twin through the same JWT
+contract.
 
 The Kafka bridge runs as a background task. When the broker is unreachable
 the gateway stays up and the dashboard sees a synthetic heartbeat so the
@@ -153,9 +157,15 @@ def create_app() -> FastAPI:
                 pass
 
     app = FastAPI(
-        title="NeuroPit Gateway",
+        title="NeuroPit Cognitive Gateway",
         version="0.2.0",
-        description="Bridge between the cognitive pipeline and the Mission Control dashboard.",
+        description=(
+            "Real time gateway over the NeuroPit Cognitive Twin Operating System. "
+            "Surfaces the probabilistic cognitive inference engine, the emotional state engine, "
+            "the IBM Granite explainable cognitive reasoning layer, the Ghost Lap AI, the "
+            "counterfactual simulator, and the strategy parliament to authenticated clients. "
+            "Telemetry is infrastructure. Cognition is the product."
+        ),
         lifespan=lifespan,
     )
 

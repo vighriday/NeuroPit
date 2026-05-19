@@ -4,6 +4,17 @@ All notable changes to NeuroPit live here. We follow [Keep a Changelog](https://
 
 The intention is that someone landing on the repository for the first time can scan this file and understand what shipped when, what is in progress, and where to look for the detail.
 
+## [Unreleased]
+
+### Positioning lockdown
+
+- New `docs/POSITIONING.md` as the canonical narrative reference for every surface, slide, and demo line. Lists the language to use and the language to avoid. Mandatory reading before changing any user facing copy.
+- README rewritten to lead with the thesis ("telemetry can probabilistically reveal the hidden cognitive and emotional state of the driver"), the category (Human Machine Cognitive Intelligence for Motorsport), and the abstraction shift ("other systems ask what is happening to the car. NeuroPit asks what is happening to the human nervous system operating the car"). Explicit "what NeuroPit is not" section added.
+- `docs/ARCHITECTURE.md` reframed around the Cognitive Twin as the unit of value and the moat. Surfaces are described as surfaces over the twin, not as the product. A new seventh principle says so out loud.
+- Mission Control hero, the Ghost Lap page, the Counterfactual page, and the Explainability page now lead with cognitive language (Cognitive Twin Operating System, cognitive normalised lap, cognitive aware what if, explainable cognitive reasoning). The browser tab title is "NeuroPit Cognitive Twin OS".
+- FastAPI gateway renamed to "NeuroPit Cognitive Gateway". Gateway description, the Cognitive Inference Engine docstring, and the IBM Granite client docstring all use the mandated vocabulary. Banned phrases such as "telemetry platform", "telemetry insights", "AI assistant", and "strategy copilot" are removed from all surfaces.
+- PRD compliance audit sections 1 to 11 and 44 to 48 refreshed to point at the new positioning document.
+
 ## [0.2.0] - 2026-05-19
 
 This release closes every PRD gap that was open after 0.1.0. NeuroPit is now positioned, in code and in documentation, as a real time Cognitive Twin Operating System for motorsport rather than a telemetry analytics platform. Telemetry is the input. The Cognitive Twin is the product.

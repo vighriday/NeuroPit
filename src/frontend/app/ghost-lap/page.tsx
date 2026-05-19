@@ -48,7 +48,7 @@ export default function GhostLapPage() {
       <header className="mb-6">
         <h1 className="text-3xl font-bold tracking-widest uppercase">Ghost Lap</h1>
         <p className="text-gray-400 text-sm tracking-widest mt-1">
-          Reconstruct the cognitive normalised lap and see which mental signals cost the driver time.
+          Cognitive normalised lap reconstruction. Attribute lost time to the driver cognitive state, not the car.
         </p>
       </header>
 

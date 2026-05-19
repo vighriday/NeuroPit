@@ -183,7 +183,9 @@ export default function MissionControl() {
       <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
         <div>
           <h1 className="text-3xl font-bold tracking-widest uppercase">NeuroPit</h1>
-          <p className="text-gray-400 text-sm tracking-widest">Cognitive State Mission Control</p>
+          <p className="text-gray-400 text-sm tracking-widest">
+            Cognitive Twin Operating System / Telemetry is infrastructure. Cognition is the product.
+          </p>
         </div>
         <div className="flex gap-4">
           <div
