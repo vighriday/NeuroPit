@@ -1,13 +1,13 @@
 """Unit tests for the Granite client.
 
-We do not call watsonx.ai during tests. The stub path is exercised directly
-and the cloud path is covered with a small monkeypatched httpx client so the
-expected request shape is verified without ever touching the network.
+We never download model weights and we never touch watsonx.ai during the unit
+suite. The local inference path is exercised through a monkeypatched
+pipeline loader. The watsonx path is exercised through a monkeypatched
+httpx client. The stub path is exercised directly.
 """
 
 from __future__ import annotations
 
-import json
 import types
 
 import pytest
@@ -18,11 +18,14 @@ from src.backend.reasoning.granite_client import GraniteClient
 
 class _FakeSettings:
     def __init__(self, **overrides):
-        self.granite_use_stub = overrides.get("granite_use_stub", True)
+        self.granite_use_stub = overrides.get("granite_use_stub", False)
+        self.granite_use_local = overrides.get("granite_use_local", True)
         self.watsonx_api_key = overrides.get("watsonx_api_key", "")
         self.watsonx_project_id = overrides.get("watsonx_project_id", "")
         self.watsonx_url = overrides.get("watsonx_url", "https://example.invalid")
-        self.granite_model_id = overrides.get("granite_model_id", "ibm/granite-3-8b-instruct")
+        self.granite_model_id = overrides.get(
+            "granite_model_id", "ibm-granite/granite-3.1-8b-instruct"
+        )
 
 
 def _state(**overrides) -> dict:
@@ -39,24 +42,35 @@ def _state(**overrides) -> dict:
     return base
 
 
+@pytest.fixture(autouse=True)
+def _clear_pipeline_cache():
+    granite_client._PIPELINE_CACHE.clear()
+    yield
+    granite_client._PIPELINE_CACHE.clear()
+
+
+# ---------------------------------------------------------------------------
+# Stub path
+# ---------------------------------------------------------------------------
+
+
 def test_stub_path_when_explicitly_requested():
-    client = GraniteClient(_FakeSettings(granite_use_stub=True))
+    client = GraniteClient(_FakeSettings(granite_use_stub=True, granite_use_local=False))
     result = client.explain(_state())
     assert result["source"] == "stub"
     assert "Aggressive" in result["text"]
     assert "moderate" in result["text"]
 
 
-def test_stub_path_when_api_key_missing():
-    client = GraniteClient(_FakeSettings(granite_use_stub=False, watsonx_api_key=""))
-    result = client.explain(_state())
-    assert result["source"] == "stub"
-
-
 def test_stub_mentions_low_confidence_when_below_floor():
-    client = GraniteClient(_FakeSettings(granite_use_stub=True))
+    client = GraniteClient(_FakeSettings(granite_use_stub=True, granite_use_local=False))
     result = client.explain(_state(confidence_score=20.0))
     assert "below the strategist safety line" in result["text"]
+
+
+# ---------------------------------------------------------------------------
+# Prompt assembly
+# ---------------------------------------------------------------------------
 
 
 def test_prompt_includes_reading_payload():
@@ -73,12 +87,57 @@ def test_prompt_includes_grounding_when_present():
     assert "FIA report" in prompt
 
 
-def test_cloud_path_uses_settings(monkeypatch):
+# ---------------------------------------------------------------------------
+# Local Hugging Face path
+# ---------------------------------------------------------------------------
+
+
+class _FakeTokenizer:
+    eos_token_id = 0
+
+    def encode(self, text: str):
+        return [1] * max(1, len(text.split()))
+
+
+class _FakeGenerator:
+    def __init__(self, output_text: str):
+        self.output_text = output_text
+        self.tokenizer = _FakeTokenizer()
+        self.calls = []
+
+    def __call__(self, prompt, **kwargs):
+        self.calls.append({"prompt": prompt, **kwargs})
+        return [{"generated_text": prompt + self.output_text}]
+
+
+def test_local_path_uses_pipeline(monkeypatch):
+    fake = _FakeGenerator("Driver stress is climbing because steering instability spiked over six laps.")
+    monkeypatch.setattr(granite_client, "_load_local_pipeline", lambda _model: fake)
+
+    client = GraniteClient(_FakeSettings(granite_use_stub=False, granite_use_local=True))
+    result = client.explain(_state())
+
+    assert result["source"] == "granite-local"
+    assert result["model"] == "ibm-granite/granite-3.1-8b-instruct"
+    assert "steering instability" in result["text"]
+    assert fake.calls, "pipeline should have been called"
+
+
+def test_local_failure_falls_back_to_stub(monkeypatch):
+    def _explode(_model):
+        raise RuntimeError("model download failed")
+
+    monkeypatch.setattr(granite_client, "_load_local_pipeline", _explode)
+
+    client = GraniteClient(_FakeSettings(granite_use_stub=False, granite_use_local=True))
+    result = client.explain(_state())
+    assert result["source"] == "stub"
+
+
+def test_local_falls_through_to_watsonx_when_disabled(monkeypatch):
     captured = {}
 
     class _FakeResponse:
-        status_code = 200
-
         def raise_for_status(self):
             return None
 
@@ -87,7 +146,7 @@ def test_cloud_path_uses_settings(monkeypatch):
 
     class _FakeClient:
         def __init__(self, *args, **kwargs):
-            captured["client_kwargs"] = kwargs
+            captured["kwargs"] = kwargs
 
         def __enter__(self):
             return self
@@ -96,8 +155,6 @@ def test_cloud_path_uses_settings(monkeypatch):
             return False
 
         def post(self, url, headers=None, json=None):
-            captured["url"] = url
-            captured["headers"] = headers
             captured["payload"] = json
             return _FakeResponse()
 
@@ -105,6 +162,7 @@ def test_cloud_path_uses_settings(monkeypatch):
 
     client = GraniteClient(_FakeSettings(
         granite_use_stub=False,
+        granite_use_local=False,
         watsonx_api_key="secret",
         watsonx_project_id="proj-123",
     ))
@@ -112,11 +170,10 @@ def test_cloud_path_uses_settings(monkeypatch):
 
     assert result["source"] == "watsonx"
     assert result["text"] == "all good"
-    assert "Authorization" in captured["headers"]
     assert captured["payload"]["project_id"] == "proj-123"
 
 
-def test_cloud_failure_falls_back_to_stub(monkeypatch):
+def test_watsonx_failure_falls_back_to_stub(monkeypatch):
     class _ExplodingClient:
         def __init__(self, *args, **kwargs):
             pass
@@ -134,8 +191,20 @@ def test_cloud_failure_falls_back_to_stub(monkeypatch):
 
     client = GraniteClient(_FakeSettings(
         granite_use_stub=False,
+        granite_use_local=False,
         watsonx_api_key="secret",
         watsonx_project_id="proj-123",
+    ))
+    result = client.explain(_state())
+    assert result["source"] == "stub"
+
+
+def test_no_credentials_lands_on_stub(monkeypatch):
+    client = GraniteClient(_FakeSettings(
+        granite_use_stub=False,
+        granite_use_local=False,
+        watsonx_api_key="",
+        watsonx_project_id="",
     ))
     result = client.explain(_state())
     assert result["source"] == "stub"

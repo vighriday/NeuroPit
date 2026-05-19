@@ -39,12 +39,13 @@ class NeuroPitSettings(BaseSettings):
     qdrant_port: int = Field(default=6333)
     qdrant_api_key: str = Field(default="")
 
-    # IBM watsonx.ai
+    # IBM Granite (local Hugging Face by default, watsonx as cloud fallback)
+    granite_model_id: str = Field(default="ibm-granite/granite-3.1-8b-instruct")
+    granite_use_local: bool = Field(default=True)
+    granite_use_stub: bool = Field(default=False)
     watsonx_api_key: str = Field(default="")
     watsonx_project_id: str = Field(default="")
     watsonx_url: str = Field(default="https://us-south.ml.cloud.ibm.com")
-    granite_model_id: str = Field(default="ibm/granite-3-8b-instruct")
-    granite_use_stub: bool = Field(default=True)
 
     # Langflow
     langflow_api_url: str = Field(default="http://localhost:7860")

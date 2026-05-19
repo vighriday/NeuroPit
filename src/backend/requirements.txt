@@ -23,6 +23,12 @@ scikit-learn==1.4.0
 docling==1.7.0
 sentence-transformers==2.5.1
 
+# IBM Granite local inference (Hugging Face)
+transformers>=4.45.0
+accelerate>=0.30.0
+torch>=2.2.0
+huggingface-hub>=0.24.0
+
 # Orchestration
 langchain==0.1.16
 langchain-community==0.0.34

@@ -179,11 +179,17 @@ make integration       # smoke tests against a running Redpanda
 
 The unit suite is the safety net for every cognitive equation, every persona rule, every prediction horizon, every counterfactual scenario, every Granite path, every cognitive gateway route, and every security helper.
 
+## IBM Granite
+
+NeuroPit uses the open source IBM Granite community models from `https://github.com/ibm-granite-community` and `https://huggingface.co/ibm-granite`. The default model is `ibm-granite/granite-3.1-8b-instruct`. The Granite client runs three paths in order: local Hugging Face inference first (no API key, no network after the first model download), IBM watsonx.ai as an optional cloud fallback when credentials are configured, and a deterministic templated stub last so the Mission Control surface never goes dark.
+
+Pick the path with the environment variables `GRANITE_USE_LOCAL`, `GRANITE_USE_STUB`, `WATSONX_API_KEY`, and `WATSONX_PROJECT_ID`. The defaults in `.env.example` keep the system on local Hugging Face inference.
+
 ## Optional cloud paths
 
-The cloud paths are optional. When watsonx.ai credentials and the Qdrant cloud cluster are not configured, NeuroPit runs entirely on the local Docker stack with the local Granite stub and the local Qdrant Docker container.
+The cloud paths are optional. When watsonx.ai credentials and the Qdrant cloud cluster are not configured, NeuroPit runs entirely on the local stack with local Hugging Face Granite inference and the local Qdrant Docker container.
 
-- IBM watsonx.ai API key and project id for live Granite explainable cognitive reasoning.
+- IBM watsonx.ai API key and project id if you want to offload Granite inference to IBM Cloud.
 - InfluxDB Cloud free tier bucket called `neuropit-telemetry` if you do not want to rely on the local Docker image.
 - Qdrant Cloud free tier cluster for hosted motorsport cognition ontology storage.
 
