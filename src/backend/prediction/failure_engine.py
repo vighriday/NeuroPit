@@ -22,6 +22,7 @@ from typing import Dict, Optional
 from confluent_kafka import Consumer, Producer
 
 from src.backend.common import audit
+from src.backend.common import weights
 from src.backend.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -73,38 +74,56 @@ class PredictiveFailureEngine:
 
         stress_recent = _moving_average(deque((float(s.get("stress_score", 0.0)) for s in history), maxlen=self.BUFFER_LENGTH))
 
+        fw = weights.FAILURE
+        stress_n = stress / 100.0
+        confidence_n = confidence / 100.0
+        inv_confidence = 1.0 - confidence_n
+        fatigue_n = fatigue / 100.0
+        stress_recent_n = stress_recent / 100.0
+
         crash_likelihood = _clamp(
-            0.5 * tunnel_vision
-            + 0.3 * (stress / 100.0)
-            + 0.2 * (1.0 - confidence / 100.0)
+            fw.crash_tunnel * tunnel_vision
+            + fw.crash_stress * stress_n
+            + fw.crash_inv_confidence * inv_confidence
         )
         lock_up_probability = _clamp(
-            0.6 * (stress / 100.0)
-            + 0.4 * (1.0 - confidence / 100.0)
+            fw.lockup_stress * stress_n
+            + fw.lockup_inv_confidence * inv_confidence
         )
         spin_probability = _clamp(
-            0.5 * (1.0 - confidence / 100.0)
-            + 0.3 * (stress / 100.0)
-            + 0.2 * (1.0 if persona_state == "Panic" else 0.0)
+            fw.spin_inv_confidence * inv_confidence
+            + fw.spin_stress * stress_n
+            + fw.spin_panic_persona * (1.0 if persona_state == "Panic" else 0.0)
+        )
+        overtake_persona_term = (
+            1.0
+            if persona_state in {"Defensive", "Fatigue"}
+            else fw.overtake_default_persona_term
         )
         failed_overtake_probability = _clamp(
-            0.5 * (1.0 - confidence / 100.0)
-            + 0.5 * (1.0 if persona_state in {"Defensive", "Fatigue"} else 0.2)
+            fw.overtake_inv_confidence * inv_confidence
+            + fw.overtake_defensive_fatigue_persona * overtake_persona_term
         )
         concentration_collapse = _clamp(
-            0.4 * (fatigue / 100.0)
-            + 0.4 * (stress_recent / 100.0)
-            + 0.2 * (1.0 if persona_state == "Fatigue" else 0.0)
+            fw.collapse_fatigue * fatigue_n
+            + fw.collapse_stress_recent * stress_recent_n
+            + fw.collapse_fatigue_persona * (1.0 if persona_state == "Fatigue" else 0.0)
         )
         strategic_noncompliance = _clamp(
-            0.5 * (1.0 if persona_state == "Aggressive" else 0.0)
-            + 0.3 * (stress / 100.0)
-            + 0.2 * (1.0 - confidence / 100.0)
+            fw.noncompliance_aggressive_persona * (1.0 if persona_state == "Aggressive" else 0.0)
+            + fw.noncompliance_stress * stress_n
+            + fw.noncompliance_inv_confidence * inv_confidence
         )
 
+        horizon_weights = {
+            "5s": fw.horizon_5s,
+            "1lap": fw.horizon_1lap,
+            "3laps": fw.horizon_3laps,
+            "full_race": fw.horizon_full_race,
+        }
         forecasts = {}
         for horizon in HORIZONS:
-            horizon_weight = {"5s": 1.0, "1lap": 0.85, "3laps": 0.7, "full_race": 0.55}[horizon]
+            horizon_weight = horizon_weights[horizon]
             forecasts[horizon] = {
                 "crash_likelihood": round(crash_likelihood * horizon_weight, 4),
                 "lock_up_probability": round(lock_up_probability * horizon_weight, 4),

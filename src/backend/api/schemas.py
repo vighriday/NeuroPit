@@ -129,6 +129,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in_seconds: int
+    expires_at: str
     role: str
 
 

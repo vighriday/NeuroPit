@@ -105,6 +105,49 @@ class EmotionalDriftWeights:
 
 
 @dataclass(frozen=True)
+class FailureForecastWeights:
+    """Predictive failure engine probability weights.
+
+    Each forecast field is a convex combination of the listed inputs.
+    The horizon decay halves the probability as we look further out.
+    """
+
+    # crash_likelihood = tunnel*0.5 + stress*0.3 + (1-conf)*0.2
+    crash_tunnel: float = 0.5
+    crash_stress: float = 0.3
+    crash_inv_confidence: float = 0.2
+
+    # lock_up_probability = stress*0.6 + (1-conf)*0.4
+    lockup_stress: float = 0.6
+    lockup_inv_confidence: float = 0.4
+
+    # spin_probability = (1-conf)*0.5 + stress*0.3 + panic_persona*0.2
+    spin_inv_confidence: float = 0.5
+    spin_stress: float = 0.3
+    spin_panic_persona: float = 0.2
+
+    # failed_overtake = (1-conf)*0.5 + defensive_fatigue_persona*0.5
+    overtake_inv_confidence: float = 0.5
+    overtake_defensive_fatigue_persona: float = 0.5
+    overtake_default_persona_term: float = 0.2
+
+    # concentration_collapse = fatigue*0.4 + stress_recent*0.4 + fatigue_persona*0.2
+    collapse_fatigue: float = 0.4
+    collapse_stress_recent: float = 0.4
+    collapse_fatigue_persona: float = 0.2
+
+    # strategic_noncompliance = aggressive_persona*0.5 + stress*0.3 + (1-conf)*0.2
+    noncompliance_aggressive_persona: float = 0.5
+    noncompliance_stress: float = 0.3
+    noncompliance_inv_confidence: float = 0.2
+
+    horizon_5s: float = 1.0
+    horizon_1lap: float = 0.85
+    horizon_3laps: float = 0.70
+    horizon_full_race: float = 0.55
+
+
+@dataclass(frozen=True)
 class PersonaThresholds:
     panic_stress: float = 85.0
     panic_oscillation: float = 20.0
@@ -125,6 +168,7 @@ ATTENTION = AttentionStabilityWeights()
 STRATEGIC = StrategicReliabilityWeights()
 PANIC = PanicProbabilityWeights()
 EMOTIONAL_DRIFT = EmotionalDriftWeights()
+FAILURE = FailureForecastWeights()
 PERSONA = PersonaThresholds()
 
 
@@ -140,5 +184,6 @@ def snapshot() -> dict:
         "strategic_reliability": asdict(STRATEGIC),
         "panic_probability": asdict(PANIC),
         "emotional_drift": asdict(EMOTIONAL_DRIFT),
+        "failure_forecast": asdict(FAILURE),
         "persona": asdict(PERSONA),
     }

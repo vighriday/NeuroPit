@@ -57,7 +57,7 @@ class PrescriptionWorker:
         # worker alongside the explainability worker.
         self.latest_granite: Dict[str, dict] = {}
 
-    def _enrich_with_granite(self, prescription_dict: dict, state: dict) -> dict:
+    def _enrich_with_granite(self, state: dict) -> dict:
         driver_id = str(state.get("driver_id") or "")
         return self.latest_granite.get(driver_id, {})
 
@@ -83,7 +83,7 @@ class PrescriptionWorker:
         prescription = self.engine.emit(state=data, forecast=forecast)
         prescription_dict = prescription.to_dict()
 
-        granite = self._enrich_with_granite(prescription_dict, data)
+        granite = self._enrich_with_granite(data)
         if granite:
             prescription_dict["granite"] = granite
 
@@ -93,13 +93,21 @@ class PrescriptionWorker:
             "timestamp": data.get("timestamp"),
             "prescription": prescription_dict,
         }
+        try:
+            audit.append({"kind": "prescription_emission", **payload})
+        except Exception as exc:
+            logger.warning(
+                "Audit append failed for prescription %s, dropping emit: %s",
+                driver_id,
+                exc,
+            )
+            return
         self.producer.produce(
             PRESCRIPTION_TOPIC,
             key=driver_id.encode("utf-8"),
             value=json.dumps(payload, default=str).encode("utf-8"),
         )
         self.producer.poll(0)
-        audit.append({"kind": "prescription_emission", **payload})
 
     def run(self) -> None:
         logger.info("Prescription worker running on broker %s", self.broker_url)

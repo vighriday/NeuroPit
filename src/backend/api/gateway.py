@@ -25,7 +25,7 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Set
 
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -37,7 +37,7 @@ from src.backend.inference.emotional_state import evaluate as evaluate_emotion
 from src.backend.prescription.engine import PrescriptionEngine
 from src.backend.reporting.post_race import build_report
 from src.backend.security import roles as roles_registry
-from src.backend.security.auth import current_claims, require_scopes
+from src.backend.security.auth import current_claims
 from src.backend.security.tokens import TokenClaims, issue_token
 from src.backend.simulation import counterfactual as counterfactual_engine
 from src.backend.simulation.ghost_lap import LapCognitiveSummary, attribute_lost_time
@@ -154,6 +154,7 @@ _PREVIEW_ENGINE = PrescriptionEngine()
 
 def create_app() -> FastAPI:
     manager = ConnectionManager()
+    settings = get_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -185,12 +186,19 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # CORS is restricted to the dashboard origins. allow_credentials=True
+    # plus an open allow_origins list is invalid per spec and silently
+    # disabled by browsers, so we list the local Mission Control ports
+    # explicitly. Override via API_CORS_ORIGINS in .env for staging or
+    # production deployments.
+    raw_origins = settings.api_cors_origins
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins or ["http://localhost:3000", "http://localhost:3001"],
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     @app.get("/healthz")
@@ -204,9 +212,12 @@ def create_app() -> FastAPI:
         except KeyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         token = issue_token(req.subject, req.role, req.expires_in_seconds)
+        expires_in = req.expires_in_seconds or settings.api_token_expiry_minutes * 60
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         return schemas.TokenResponse(
             access_token=token,
-            expires_in_seconds=req.expires_in_seconds or get_settings().api_token_expiry_minutes * 60,
+            expires_in_seconds=expires_in,
+            expires_at=expires_at.isoformat(),
             role=req.role,
         )
 

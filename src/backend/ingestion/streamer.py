@@ -10,12 +10,14 @@ pipeline behaves as if the race were happening right now.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 from datetime import datetime, timezone
 from typing import Dict, List
 
 import fastf1
+import numpy as np
 import pandas as pd
 
 from src.backend.config import get_settings
@@ -69,8 +71,44 @@ class HistoricalRaceStreamer:
                 direction="nearest",
             )
             merged = merged.dropna(subset=["Speed", "Throttle", "Brake"])
+            merged = self._enrich_with_steering(merged)
             self.telemetry_data[driver] = merged
             logger.info("Loaded %d telemetry frames for %s", len(merged), driver)
+
+    @staticmethod
+    def _enrich_with_steering(frames: pd.DataFrame) -> pd.DataFrame:
+        """Derive a steering angle proxy from the position trace.
+
+        FastF1 does not surface a true steering wheel angle, so we infer
+        the driver's input from how sharply the car is turning. We take
+        the heading at each sample from successive (X, Y) points, then
+        compute the change in heading per timestep and scale it into a
+        plausible degree range. The proxy is honest about what it is
+        and labelled the same way downstream consumers treat any other
+        derived signal.
+        """
+        if frames.empty or {"X", "Y"}.difference(frames.columns):
+            frames = frames.copy()
+            frames["steering_angle"] = 0.0
+            return frames
+
+        x = frames["X"].to_numpy(dtype=float)
+        y = frames["Y"].to_numpy(dtype=float)
+        dx = np.diff(x, prepend=x[0])
+        dy = np.diff(y, prepend=y[0])
+        heading = np.arctan2(dy, dx)
+        delta = np.diff(heading, prepend=heading[0])
+        # Wrap into [-pi, pi].
+        delta = (delta + math.pi) % (2 * math.pi) - math.pi
+        # Convert to degrees and scale. Empirically the per-sample delta
+        # rarely exceeds 0.25 rad, so multiplying by 180/pi gives a band
+        # around plus/minus 14 degrees, which we then amplify into the
+        # plus/minus 180 degree wheel angle range.
+        steering_deg = np.degrees(delta) * 12.0
+        steering_deg = np.clip(steering_deg, -180.0, 180.0)
+        frames = frames.copy()
+        frames["steering_angle"] = steering_deg
+        return frames
 
     def execute_playback(self) -> None:
         if not self.telemetry_data:
@@ -120,7 +158,7 @@ class HistoricalRaceStreamer:
                     gear=int(row.get("Gear", 0)),
                     throttle=float(row.get("Throttle", 0.0)),
                     brake=float(row.get("Brake", 0.0)),
-                    steering_angle=0.0,
+                    steering_angle=float(row.get("steering_angle", 0.0)),
                     drs=int(row.get("DRS", 0)),
                     x=float(row.get("X", 0.0)),
                     y=float(row.get("Y", 0.0)),

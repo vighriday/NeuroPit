@@ -17,7 +17,7 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from statistics import mean
 from typing import Dict, List, Optional
 
@@ -26,6 +26,32 @@ from src.backend.simulation.counterfactual import run_all as run_all_counterfact
 from src.backend.simulation.ghost_lap import LapCognitiveSummary, attribute_lost_time
 
 logger = logging.getLogger(__name__)
+
+
+def _estimate_lap_time_s(events_for_driver: List[dict]) -> float:
+    """Return wall clock span in seconds across the audit events.
+
+    The post race report is computed off the audit log; we do not have
+    a real lap counter in the audit row. The next best signal is the
+    elapsed time between the first and last audit row in the window
+    the caller passed in. This is honest about what it knows: it is
+    the wall clock span the strategist asked to summarise, not a
+    fabricated 90 second placeholder.
+    """
+    timestamps: List[datetime] = []
+    for event in events_for_driver:
+        ts = event.get("timestamp")
+        if not ts:
+            continue
+        try:
+            value = ts if not ts.endswith("Z") else ts.replace("Z", "+00:00")
+            timestamps.append(datetime.fromisoformat(value))
+        except Exception:
+            continue
+    if len(timestamps) < 2:
+        return 0.0
+    span = (max(timestamps) - min(timestamps)).total_seconds()
+    return float(max(span, 0.0))
 
 
 def _iter_audit_events(audit_dir: str):
@@ -114,7 +140,7 @@ def _ghost_lap_for_driver(driver_id: str, events_for_driver: List[dict]) -> Opti
     summary = LapCognitiveSummary(
         lap_number=len(events_for_driver),
         driver_id=driver_id,
-        actual_lap_time_s=90.0,
+        actual_lap_time_s=_estimate_lap_time_s(events_for_driver),
         average_stress=float(mean(
             float((event.get("state") or {}).get("stress_score", 0.0)) for event in events_for_driver
         )),
@@ -143,7 +169,7 @@ def _counterfactuals_for_driver(driver_id: str, events_for_driver: List[dict]) -
     summary = LapCognitiveSummary(
         lap_number=len(events_for_driver),
         driver_id=driver_id,
-        actual_lap_time_s=90.0,
+        actual_lap_time_s=_estimate_lap_time_s(events_for_driver),
         average_stress=float(mean(
             float((event.get("state") or {}).get("stress_score", 0.0)) for event in events_for_driver
         )),

@@ -39,8 +39,10 @@ class NeuroPitSettings(BaseSettings):
     qdrant_port: int = Field(default=6333)
     qdrant_api_key: str = Field(default="")
 
-    # IBM Granite (local Hugging Face by default, watsonx as cloud fallback)
-    granite_model_id: str = Field(default="ibm-granite/granite-3.1-8b-instruct")
+    # IBM Granite (local Hugging Face by default, watsonx as cloud fallback).
+    # Default to the 2B variant so the full pipeline runs on a 16 GB
+    # workstation. Override with GRANITE_MODEL_ID in .env to use 3.1 8B.
+    granite_model_id: str = Field(default="ibm-granite/granite-3.0-2b-instruct")
     granite_use_local: bool = Field(default=True)
     granite_use_stub: bool = Field(default=False)
     watsonx_api_key: str = Field(default="")
@@ -56,6 +58,9 @@ class NeuroPitSettings(BaseSettings):
     api_jwt_secret: str = Field(default="neuropit-dev-jwt-secret-change-me")
     api_jwt_algorithm: str = Field(default="HS256")
     api_token_expiry_minutes: int = Field(default=120)
+    api_cors_origins: str = Field(
+        default="http://localhost:3000,http://localhost:3001"
+    )
 
     # Privacy
     audit_log_dir: str = Field(default="./audit_logs")

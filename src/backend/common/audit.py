@@ -34,14 +34,29 @@ def _resolve_log_path() -> str:
 def append(event: Dict[str, Any]) -> None:
     """Append a single event to today's audit log file.
 
-    The function is safe to call from multiple threads in a single process.
-    Cross process safety is intentionally not promised. Each worker uses its
-    own writer.
+    Raises on disk failure so the caller can decide whether to drop the
+    matching broadcast. The function is safe to call from multiple
+    threads in a single process. Cross process safety is intentionally
+    not promised. Each worker uses its own writer.
+    """
+    path = _resolve_log_path()
+    payload = json.dumps(event, default=str) + "\n"
+    with _lock:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(payload)
+
+
+def try_append(event: Dict[str, Any]) -> bool:
+    """Best effort append. Returns True on success.
+
+    Use this when the producer is not load bearing for trust guarantees,
+    for example background telemetry. The cognitive engine, the
+    prescription worker, and the what if replay route call ``append``
+    instead and skip their broadcast when it raises.
     """
     try:
-        path = _resolve_log_path()
-        with _lock:
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(event, default=str) + "\n")
+        append(event)
+        return True
     except Exception as exc:
         logger.warning("Audit log write failed: %s", exc)
+        return False

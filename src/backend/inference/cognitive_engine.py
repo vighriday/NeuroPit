@@ -230,6 +230,19 @@ class CognitiveInferenceEngine:
             },
         }
 
+        # Audit first, broadcast second. If the audit append raises we
+        # skip the Kafka produce so the dashboard never sees a number we
+        # could not durably explain afterwards.
+        try:
+            self._audit(cognitive_state, features, biometrics)
+        except Exception as exc:
+            logger.warning(
+                "Audit append failed for %s, dropping cognitive emit: %s",
+                driver_id,
+                exc,
+            )
+            return cognitive_state
+
         self.producer.produce(
             "cognitive-state-inference",
             key=driver_id.encode("utf-8"),
@@ -238,7 +251,6 @@ class CognitiveInferenceEngine:
         self.producer.poll(0)
 
         self._persist_state(cognitive_state)
-        self._audit(cognitive_state, features, biometrics)
         return cognitive_state
 
     def _persist_state(self, state: dict) -> None:

@@ -66,18 +66,42 @@ class FeatureExtractor:
         speed_diff = np.diff(speed_arr)
         rapid_decel = float(np.sum(speed_diff < -15.0))
 
+        # Throttle commitment is the average throttle position in the
+        # window normalised to 0..1. A driver who keeps the pedal
+        # buried is committed; a driver who lifts is not.
+        throttle_commitment = float(np.clip(np.mean(throttle_arr) / 100.0, 0.0, 1.0))
+
+        # Braking hesitation measures the count of small brake taps that
+        # never reach a committed brake pressure. We use the standard
+        # deviation of brake input combined with the number of brake
+        # release events as a proxy.
+        brake_diff = np.diff(brake_arr)
+        brake_releases = float(np.sum(brake_diff < -5.0))
+        braking_hesitation = float(np.std(brake_arr) + brake_releases * 2.0)
+
+        # Panic oscillation is the high-frequency steering signature
+        # plus the rapid deceleration count. Documented in
+        # docs/COGNITIVE_METHODOLOGY.md.
+        steering_instability = float(np.std(steering_diff))
+        panic_oscillation = float(
+            (steering_instability * 0.6) + (rapid_decel * 0.4)
+        )
+
         features = {
             "driver_id": driver_id,
             "timestamp": current_frame.get("timestamp"),
-            "steering_instability": float(np.std(steering_diff)),
+            "steering_instability": steering_instability,
             "micro_correction_freq": float(np.sum(np.abs(steering_diff) > 2.0)),
             "braking_variance": float(np.std(brake_arr)),
             "throttle_jitter": float(np.sum(np.abs(throttle_diff[throttle_diff < 0]))),
-            "panic_signature": 0.0,
+            "throttle_commitment": throttle_commitment,
+            "braking_hesitation": braking_hesitation,
+            "panic_oscillation": panic_oscillation,
+            # Legacy alias retained for any older consumer that still
+            # reads panic_signature. Drop once every consumer has
+            # migrated.
+            "panic_signature": panic_oscillation,
         }
-        features["panic_signature"] = float(
-            (features["steering_instability"] * 0.6) + (rapid_decel * 0.4)
-        )
         return features
 
     def run(self) -> None:
