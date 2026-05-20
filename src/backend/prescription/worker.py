@@ -122,7 +122,10 @@ class PrescriptionWorker:
                 topic = msg.topic()
                 try:
                     data = json.loads(msg.value().decode("utf-8"))
-                except Exception:
+                except Exception as exc:
+                    logger.debug(
+                        "Skipping malformed payload on %s: %s", topic, exc
+                    )
                     continue
                 if topic == "anomaly-events":
                     self._handle_anomaly(data)

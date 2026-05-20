@@ -72,7 +72,8 @@ class ConnectionManager:
             for connection in self._connections:
                 try:
                     await connection.send_json(payload)
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Dropping closed websocket connection: %s", exc)
                     dead.append(connection)
             for connection in dead:
                 self._connections.discard(connection)
@@ -115,7 +116,10 @@ async def _kafka_bridge(manager: ConnectionManager) -> None:
                 continue
             try:
                 payload = json.loads(msg.value().decode("utf-8"))
-            except Exception:
+            except Exception as exc:
+                logger.debug(
+                    "Skipping malformed payload on %s: %s", msg.topic(), exc
+                )
                 continue
             envelope = {"channel": msg.topic(), "payload": payload}
             await manager.broadcast(envelope)

@@ -84,7 +84,13 @@ class InfluxDBWriter:
                     continue
 
                 topic = msg.topic()
-                data = json.loads(msg.value().decode("utf-8"))
+                try:
+                    data = json.loads(msg.value().decode("utf-8"))
+                except Exception as exc:
+                    logger.debug(
+                        "Skipping malformed payload on %s: %s", topic, exc
+                    )
+                    continue
                 try:
                     if topic == "incoming-telemetry-raw":
                         self.write_raw_telemetry(data)

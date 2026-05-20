@@ -89,7 +89,10 @@ class EmotionalStateWorker:
                     continue
                 try:
                     data = json.loads(msg.value().decode("utf-8"))
-                except Exception:
+                except Exception as exc:
+                    logger.debug(
+                        "Skipping malformed payload on %s: %s", msg.topic(), exc
+                    )
                     continue
                 self._store(msg.topic(), data)
         except KeyboardInterrupt:
