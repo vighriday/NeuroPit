@@ -23,16 +23,22 @@ export function MetricRing({
   value,
   max = 100,
   accent,
-  size = 140,
-  stroke = 10,
+  size = 144,
+  stroke = 6,
   inverted = false,
 }: MetricRingProps) {
   const clamped = Math.max(0, Math.min(max, value));
   const ratio = clamped / max;
+
+  // Pad the viewBox so the round-cap stroke never clips at the edges
+  // when the ring is full. Without this the top of a 100% reading
+  // looks flat and the panel reads as a square.
+  const pad = stroke;
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - ratio);
   const center = size / 2;
+  const viewBox = `${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}`;
 
   // Traffic light buckets. For inverted metrics (e.g. confidence, where
   // higher is better) we flip the thresholds. Border cases use <= so
@@ -56,8 +62,16 @@ export function MetricRing({
       : "text-apex-cyan");
 
   return (
-    <div className="flex flex-col items-center justify-center relative">
-      <svg width={size} height={size} className="-rotate-90">
+    <div
+      className="relative flex flex-col items-center justify-center"
+      style={{ width: size + pad * 2, height: size + pad * 2 }}
+    >
+      <svg
+        width={size + pad * 2}
+        height={size + pad * 2}
+        viewBox={viewBox}
+        className="-rotate-90 overflow-visible"
+      >
         <circle
           cx={center}
           cy={center}
@@ -75,23 +89,26 @@ export function MetricRing({
           strokeLinecap="round"
           strokeDasharray={circumference}
           animate={{ strokeDashoffset: dashOffset }}
-          transition={{ duration: 0.8, type: "spring", bounce: 0.2 }}
-          className={`${ringColor}`}
-          style={{ filter: "drop-shadow(0 0 6px currentColor)" }}
+          transition={{ duration: 0.8, type: "spring", bounce: 0.15 }}
+          className={ringColor}
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-4">
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <motion.div
           key={clamped}
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className={`text-4xl font-mono font-bold tracking-tighter ${numberColor} drop-shadow-lg`}
+          initial={{ opacity: 0.6 }}
+          animate={{ opacity: 1 }}
+          className={`text-3xl font-mono font-semibold tabular-nums tracking-tight ${numberColor}`}
         >
           {clamped.toFixed(1)}
         </motion.div>
-        <div className="text-[10px] tracking-[0.25em] uppercase text-gray-400 mt-1">{label}</div>
+        <div className="text-[10px] tracking-[0.25em] uppercase text-gray-400 mt-1">
+          {label}
+        </div>
+        <div className="text-[9px] tracking-[0.25em] uppercase text-gray-600 mt-0.5">
+          / {max}
+        </div>
       </div>
-      <div className="absolute bottom-0 text-[10px] tracking-[0.25em] uppercase text-gray-600 mb-2">/ {max}</div>
     </div>
   );
 }
