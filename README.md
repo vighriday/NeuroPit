@@ -13,7 +13,7 @@
 [![IBM Granite](https://img.shields.io/badge/IBM-Granite-052FAD?logo=ibm)](https://github.com/ibm-granite-community)
 [![IBM Docling](https://img.shields.io/badge/IBM-Docling-052FAD?logo=ibm)](https://www.docling.ai)
 [![Langflow](https://img.shields.io/badge/Langflow-Orchestrated-1f7a8c)](https://www.langflow.org)
-[![Tests](https://img.shields.io/badge/tests-153%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-178%20passing-brightgreen)](tests/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Next.js 14](https://img.shields.io/badge/Next.js-14-000000?logo=nextdotjs)](https://nextjs.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -261,7 +261,7 @@ If any step fails, the troubleshooting checklist lives under the FAQ at the bott
 | **IBM Docling usage** | [`src/backend/knowledge/docling_compiler.py`](src/backend/knowledge/docling_compiler.py) — compiles FIA reports, neuroscience papers, and racing literature into a Qdrant collection. Retrieved at every Granite call. |
 | **Langflow usage** | [`orchestration/langflow/neuropit_strategy_flow.json`](orchestration/langflow/neuropit_strategy_flow.json) — importable visual flow. |
 | **Innovation** | Three-tier system: diagnostic Cognitive Twin, prescriptive engine with typed action space and Optimality Gap against a per-driver Performance Envelope, audit-log-driven What-If Replay that lets the strategist re-run real session data under a mutated input. Nobody else ships this stack. |
-| **Technical depth** | Event-driven Redpanda pipeline, InfluxDB time-series persistence, Qdrant vector grounding, FastAPI WebSocket fan-out, JWT + RBAC, Fernet encryption at source, 153 unit tests, GitHub Actions CI. |
+| **Technical depth** | Event-driven Redpanda pipeline, InfluxDB time-series persistence, Qdrant vector grounding, FastAPI WebSocket fan-out, JWT + RBAC, Fernet encryption at source, 178 unit tests, GitHub Actions CI. |
 | **Explainability** | Every output ships with a Granite paragraph, a confidence band, and a JSONL audit row. Physics-first reasoning forbids Granite from inventing cognitive numbers. |
 | **Impact** | Closes the seven-figure gap between telemetry analytics and driver state. Generalises to aviation, defence, surgery, esports, and elite athletics. |
 | **Demo readiness** | One `make` command per terminal. Mission Control pit-wall shows the Cognitive Twin emitting within ten seconds of stream start. |
@@ -317,7 +317,7 @@ A minute-by-minute run order judges or recruiters can follow without you in the 
 | Knowledge | IBM Docling |
 | Orchestration | Langflow reference flow |
 | Telemetry source | OpenF1 + FastF1 |
-| Tests | pytest, 153 unit tests, integration tests gated on infra |
+| Tests | pytest, 178 unit tests, integration tests gated on infra |
 | CI | GitHub Actions on every push and pull request |
 
 ### Live proof of every tier
@@ -356,7 +356,7 @@ Vulnerability disclosure procedure lives in [`SECURITY.md`](SECURITY.md).
 ## Tests
 
 ```bash
-make test              # 153 unit tests, no infrastructure required
+make test              # 178 unit tests, no infrastructure required
 make integration       # integration smoke tests, requires Redpanda running
 ```
 

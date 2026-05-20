@@ -42,6 +42,29 @@ class ExplainabilityWorker:
 
         self.granite = GraniteClient(settings)
 
+    def _handle_state(self, state: dict) -> dict:
+        """Run Granite over one cognitive state and publish the result.
+
+        Pulled out of the Kafka loop so unit tests can drive the
+        explanation pipeline without spinning up a broker.
+        """
+        explanation = self.granite.explain(state)
+        payload = {
+            "kind": "explanation",
+            "driver_id": state.get("driver_id"),
+            "timestamp": state.get("timestamp"),
+            "state": state,
+            "explanation": explanation,
+        }
+        self.producer.produce(
+            "explanation-events",
+            key=str(state.get("driver_id", "global")).encode("utf-8"),
+            value=json.dumps(payload).encode("utf-8"),
+        )
+        self.producer.poll(0)
+        audit.append(payload)
+        return payload
+
     def run(self) -> None:
         logger.info("Explainability worker running on broker %s", self.broker_url)
         try:
@@ -53,23 +76,17 @@ class ExplainabilityWorker:
                     logger.error("Consumer error: %s", msg.error())
                     continue
 
-                state = json.loads(msg.value().decode("utf-8"))
-                explanation = self.granite.explain(state)
+                try:
+                    state = json.loads(msg.value().decode("utf-8"))
+                except Exception as exc:
+                    logger.debug(
+                        "Skipping malformed payload on %s: %s",
+                        msg.topic(),
+                        exc,
+                    )
+                    continue
 
-                payload = {
-                    "kind": "explanation",
-                    "driver_id": state.get("driver_id"),
-                    "timestamp": state.get("timestamp"),
-                    "state": state,
-                    "explanation": explanation,
-                }
-                self.producer.produce(
-                    "explanation-events",
-                    key=str(state.get("driver_id", "global")).encode("utf-8"),
-                    value=json.dumps(payload).encode("utf-8"),
-                )
-                self.producer.poll(0)
-                audit.append(payload)
+                self._handle_state(state)
 
         except KeyboardInterrupt:
             logger.info("Shutting down explainability worker")
