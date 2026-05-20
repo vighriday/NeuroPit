@@ -25,17 +25,19 @@ jobs:
 
       - name: Install backend dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip setuptools wheel
           # Install only what the unit suite needs. The unit suite never
           # downloads model weights, never starts brokers, and never talks
-          # to the watsonx endpoint. Keeps CI fast and predictable.
+          # to the watsonx endpoint. Keeps CI fast and predictable. pandas
+          # 2.2.3 is the first release with a Python 3.12 cp312 wheel that
+          # does not need to build from source on the runner.
           pip install \
             pydantic==2.5.3 \
             pydantic-settings==2.1.0 \
             python-dotenv==1.0.0 \
             numpy==1.26.2 \
             scipy==1.11.4 \
-            pandas==2.0.3 \
+            pandas==2.2.3 \
             scikit-learn==1.4.0 \
             confluent-kafka==2.3.0 \
             influxdb-client==1.39.0 \
