@@ -110,6 +110,26 @@ function formatTime(iso: string): string {
   }
 }
 
+// F1 three-letter driver codes used by FastF1. Mapped to surnames so
+// the UI never shows a raw code without a name a non-F1 reader would
+// recognise.
+const DRIVER_NAMES: Record<string, string> = {
+  VER: "Verstappen",
+  HAM: "Hamilton",
+  LEC: "Leclerc",
+  NOR: "Norris",
+  PER: "Perez",
+  RUS: "Russell",
+  SAI: "Sainz",
+  ALO: "Alonso",
+  PIA: "Piastri",
+  GAS: "Gasly",
+};
+
+function driverDisplayName(code: string): string {
+  return DRIVER_NAMES[code] ?? code;
+}
+
 function bandStyle(band: string | null): { label: string; tone: string } {
   switch (band) {
     case "high":
@@ -425,6 +445,9 @@ export default function MissionControl() {
             >
               <div className="text-sm font-bold tracking-[0.25em] uppercase">{driverId}</div>
               <div className="text-[10px] tracking-[0.25em] uppercase text-gray-500">
+                {driverDisplayName(driverId)}
+              </div>
+              <div className="text-[10px] tracking-[0.25em] uppercase text-gray-500 mt-0.5">
                 {dPersona} · {dBand}
               </div>
             </button>
@@ -434,16 +457,16 @@ export default function MissionControl() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
         <motion.div whileHover={{ scale: 1.02 }} className="glass-panel rounded-[4px] p-5 flex flex-col items-center">
-          <MetricRing label="Stress" value={stress} accent="text-apex-red" />
+          <MetricRing label="Stress" value={stress} />
         </motion.div>
         <motion.div whileHover={{ scale: 1.02 }} className="glass-panel rounded-[4px] p-5 flex flex-col items-center">
-          <MetricRing label="Confidence" value={confidence} accent="text-apex-cyan" inverted />
+          <MetricRing label="Confidence" value={confidence} inverted />
         </motion.div>
         <motion.div whileHover={{ scale: 1.02 }} className="glass-panel rounded-[4px] p-5 flex flex-col items-center">
-          <MetricRing label="Fatigue" value={fatigue} accent="text-apex-amber" />
+          <MetricRing label="Fatigue" value={fatigue} />
         </motion.div>
         <motion.div whileHover={{ scale: 1.02 }} className="glass-panel rounded-[4px] p-5 flex flex-col items-center">
-          <MetricRing label="Panic Prob" value={panicProb} accent="text-apex-red" />
+          <MetricRing label="Panic Prob" value={panicProb} />
         </motion.div>
       </div>
 

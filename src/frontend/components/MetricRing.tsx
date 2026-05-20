@@ -7,10 +7,15 @@ type MetricRingProps = {
   label: string;
   value: number;
   max?: number;
-  accent: string;
   size?: number;
   stroke?: number;
   inverted?: boolean;
+  /**
+   * Optional static text colour. When omitted (the recommended path)
+   * the number colour follows the same traffic light bucket as the
+   * ring stroke, so a healthy reading is never painted in danger red.
+   */
+  accent?: string;
 };
 
 export function MetricRing({
@@ -29,14 +34,26 @@ export function MetricRing({
   const dashOffset = circumference * (1 - ratio);
   const center = size / 2;
 
-  const dangerous = inverted ? clamped < 40 : clamped > 70;
-  const cautious = inverted ? clamped < 60 : clamped > 50;
+  // Traffic light buckets. For inverted metrics (e.g. confidence, where
+  // higher is better) we flip the thresholds. Border cases use <= so
+  // a confidence reading sitting exactly on 40 trips the danger bucket
+  // instead of falling into the moderate one.
+  const dangerous = inverted ? clamped <= 40 : clamped >= 70;
+  const cautious = inverted ? clamped <= 60 : clamped >= 50;
 
   const ringColor = dangerous
     ? "stroke-apex-red"
     : cautious
     ? "stroke-apex-amber"
     : "stroke-apex-cyan";
+
+  const numberColor =
+    accent ??
+    (dangerous
+      ? "text-apex-red"
+      : cautious
+      ? "text-apex-amber"
+      : "text-apex-cyan");
 
   return (
     <div className="flex flex-col items-center justify-center relative">
@@ -68,7 +85,7 @@ export function MetricRing({
           key={clamped}
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className={`text-4xl font-mono font-bold tracking-tighter ${accent} drop-shadow-lg`}
+          className={`text-4xl font-mono font-bold tracking-tighter ${numberColor} drop-shadow-lg`}
         >
           {clamped.toFixed(1)}
         </motion.div>
