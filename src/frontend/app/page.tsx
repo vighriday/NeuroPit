@@ -111,7 +111,7 @@ function formatTime(iso: string): string {
   }
 }
 
-function bandStyle(band: string): { label: string; tone: string } {
+function bandStyle(band: string | null): { label: string; tone: string } {
   switch (band) {
     case "high":
       return {
@@ -123,10 +123,15 @@ function bandStyle(band: string): { label: string; tone: string } {
         label: "MODERATE BAND",
         tone: "text-amber-300 border-amber-700/50 bg-amber-900/20",
       };
-    default:
+    case "unstable":
       return {
         label: "UNSTABLE BAND",
         tone: "text-red-400 border-red-700/50 bg-red-900/20",
+      };
+    default:
+      return {
+        label: "AWAITING TWIN",
+        tone: "text-gray-400 border-gray-700/50 bg-gray-900/30",
       };
   }
 }
@@ -157,10 +162,115 @@ export default function MissionControl() {
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
 
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const incomingBuffer = useRef<IncomingEnvelope[]>([]);
 
   useEffect(() => {
     void ensureDashboardToken();
   }, []);
+
+  // The cognitive engine emits roughly ten frames per second per
+  // driver, plus emotional, anomaly, prescription, and explanation
+  // events. Setting React state synchronously on every frame triggers
+  // a full pit wall re-render at the same cadence and the UI feels
+  // sluggish. We buffer incoming envelopes and flush them in batches
+  // four times a second so the dashboard stays smooth even under
+  // multi-driver load.
+  const applyBatch = (events: IncomingEnvelope[]): void => {
+    if (events.length === 0) return;
+
+    const driverDeltas: Record<string, Partial<DriverState>> = {};
+    const driverHistoryAdds: Record<string, ChartPoint[]> = {};
+    const driverPersonaAdds: Record<string, PersonaTick[]> = {};
+    const newExplanations: ExplanationEvent[] = [];
+    let newHeartbeat: string | null = null;
+    let nextSelectedFallback: string | null = null;
+
+    for (const envelope of events) {
+      if (envelope.channel === "cognitive-state-inference") {
+        const snap = envelope.payload as CognitiveSnapshot;
+        const driverId = snap.driver_id;
+        driverDeltas[driverId] = { ...(driverDeltas[driverId] ?? {}), latest: snap };
+        const point: ChartPoint = {
+          time: formatTime(snap.timestamp),
+          stress: snap.stress_score,
+          confidence: snap.confidence_score,
+          fatigue: snap.fatigue_score,
+          panic: snap.panic_probability ?? 0,
+        };
+        (driverHistoryAdds[driverId] ??= []).push(point);
+        (driverPersonaAdds[driverId] ??= []).push({
+          timestamp: snap.timestamp,
+          persona: snap.persona_state,
+        });
+        nextSelectedFallback ??= driverId;
+      } else if (envelope.channel === "explanation-events") {
+        newExplanations.push(envelope.payload as ExplanationEvent);
+      } else if (envelope.channel === "emotional-events") {
+        const evt = envelope.payload as EmotionalEvent;
+        driverDeltas[evt.driver_id] = { ...(driverDeltas[evt.driver_id] ?? {}), emotional: evt };
+      } else if (envelope.channel === "anomaly-events") {
+        const evt = envelope.payload as AnomalyEvent;
+        driverDeltas[evt.driver_id] = { ...(driverDeltas[evt.driver_id] ?? {}), forecast: evt };
+      } else if (envelope.channel === "cognitive-prescriptions") {
+        const evt = envelope.payload as PrescriptionEnvelopePayload;
+        if (evt.driver_id && evt.prescription) {
+          driverDeltas[evt.driver_id] = {
+            ...(driverDeltas[evt.driver_id] ?? {}),
+            prescription: evt.prescription,
+          };
+        }
+      } else if (envelope.channel === "heartbeat") {
+        newHeartbeat = (envelope.payload as { timestamp: string }).timestamp;
+      }
+    }
+
+    setByDriver((prev) => {
+      const next: Record<string, DriverState> = { ...prev };
+      const touched = new Set([
+        ...Object.keys(driverDeltas),
+        ...Object.keys(driverHistoryAdds),
+        ...Object.keys(driverPersonaAdds),
+      ]);
+      for (const driverId of touched) {
+        const base = next[driverId] ?? emptyDriverState();
+        const merged: DriverState = {
+          ...base,
+          ...(driverDeltas[driverId] ?? {}),
+        };
+        const historyAdds = driverHistoryAdds[driverId];
+        if (historyAdds && historyAdds.length > 0) {
+          merged.history = [...base.history, ...historyAdds].slice(-120);
+        }
+        const personaAdds = driverPersonaAdds[driverId];
+        if (personaAdds && personaAdds.length > 0) {
+          merged.persona = [...base.persona, ...personaAdds].slice(-80);
+        }
+        next[driverId] = merged;
+      }
+      return next;
+    });
+
+    if (newExplanations.length > 0) {
+      setExplanations((prev) => [...newExplanations.reverse(), ...prev].slice(0, 8));
+    }
+    if (newHeartbeat) {
+      setLastHeartbeat(newHeartbeat);
+    }
+    if (nextSelectedFallback) {
+      setSelectedDriver((current) => current ?? nextSelectedFallback);
+    }
+  };
+
+  const scheduleFlush = (): void => {
+    if (flushTimer.current) return;
+    flushTimer.current = setTimeout(() => {
+      flushTimer.current = null;
+      const batch = incomingBuffer.current;
+      incomingBuffer.current = [];
+      applyBatch(batch);
+    }, 250);
+  };
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -187,53 +297,8 @@ export default function MissionControl() {
         } catch {
           return;
         }
-
-        if (envelope.channel === "cognitive-state-inference") {
-          const snap = envelope.payload as CognitiveSnapshot;
-          setByDriver((prev) => {
-            const next = { ...prev };
-            const ds = next[snap.driver_id] ?? emptyDriverState();
-            const point: ChartPoint = {
-              time: formatTime(snap.timestamp),
-              stress: snap.stress_score,
-              confidence: snap.confidence_score,
-              fatigue: snap.fatigue_score,
-              panic: snap.panic_probability ?? 0,
-            };
-            next[snap.driver_id] = {
-              ...ds,
-              latest: snap,
-              history: [...ds.history, point].slice(-90),
-              persona: [...ds.persona, { timestamp: snap.timestamp, persona: snap.persona_state }].slice(-60),
-            };
-            return next;
-          });
-          setSelectedDriver((current) => current ?? snap.driver_id);
-        } else if (envelope.channel === "explanation-events") {
-          setExplanations((prev) => [envelope.payload as ExplanationEvent, ...prev].slice(0, 8));
-        } else if (envelope.channel === "emotional-events") {
-          const evt = envelope.payload as EmotionalEvent;
-          setByDriver((prev) => {
-            const ds = prev[evt.driver_id] ?? emptyDriverState();
-            return { ...prev, [evt.driver_id]: { ...ds, emotional: evt } };
-          });
-        } else if (envelope.channel === "anomaly-events") {
-          const evt = envelope.payload as AnomalyEvent;
-          setByDriver((prev) => {
-            const ds = prev[evt.driver_id] ?? emptyDriverState();
-            return { ...prev, [evt.driver_id]: { ...ds, forecast: evt } };
-          });
-        } else if (envelope.channel === "cognitive-prescriptions") {
-          const evt = envelope.payload as PrescriptionEnvelopePayload;
-          if (evt.driver_id && evt.prescription) {
-            setByDriver((prev) => {
-              const ds = prev[evt.driver_id] ?? emptyDriverState();
-              return { ...prev, [evt.driver_id]: { ...ds, prescription: evt.prescription } };
-            });
-          }
-        } else if (envelope.channel === "heartbeat") {
-          setLastHeartbeat((envelope.payload as { timestamp: string }).timestamp);
-        }
+        incomingBuffer.current.push(envelope);
+        scheduleFlush();
       };
     };
 
@@ -250,8 +315,10 @@ export default function MissionControl() {
     return () => {
       cancelled = true;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (flushTimer.current) clearTimeout(flushTimer.current);
       socket?.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const drivers = useMemo(() => Object.keys(byDriver).sort(), [byDriver]);
@@ -267,8 +334,9 @@ export default function MissionControl() {
   const panicProb = latest?.panic_probability ?? 0;
   const drift = latest?.emotional_drift_score ?? 0;
   const persona = latest?.persona_state ?? "Awaiting telemetry";
-  const band = latest?.confidence_band ?? "unstable";
+  const band = latest?.confidence_band ?? null;
   const bandView = useMemo(() => bandStyle(band), [band]);
+  const hasLatest = latest !== null;
   const driverScopedExplanations = useMemo(
     () => (selectedDriver ? explanations.filter((e) => e.driver_id === selectedDriver) : explanations),
     [explanations, selectedDriver]

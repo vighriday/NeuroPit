@@ -49,9 +49,9 @@ type Props = {
 
 const MUTATION_PRESETS: Array<{ label: string; target: string; value: string }> = [
   {
-    label: "Drop HR to calm baseline",
+    label: "Calm driver (HR 110)",
     target: "inputs.biometrics.synthetic_hr",
-    value: "120",
+    value: "110",
   },
   {
     label: "Higher HRV",
@@ -59,14 +59,14 @@ const MUTATION_PRESETS: Array<{ label: string; target: string; value: string }> 
     value: "70",
   },
   {
-    label: "Drop steering instability",
+    label: "Calm steering inputs",
     target: "inputs.features.steering_instability",
     value: "1.0",
   },
   {
-    label: "Raise throttle commitment",
+    label: "Confident throttle",
     target: "inputs.features.throttle_commitment",
-    value: "90",
+    value: "0.95",
   },
   {
     label: "Reduce panic oscillation",

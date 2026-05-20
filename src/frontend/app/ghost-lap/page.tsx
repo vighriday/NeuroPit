@@ -29,7 +29,8 @@ export default function GhostLapPage() {
       const data = await postJSON<LapSummary, GhostLapResult>("/ghost-lap", inputs);
       setResult(data);
     } catch (exc) {
-      setError(String(exc));
+      const message = exc instanceof Error ? exc.message : String(exc);
+      setError(message);
     } finally {
       setBusy(false);
     }

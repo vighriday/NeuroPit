@@ -42,7 +42,8 @@ export default function CounterfactualPage() {
       }
       setResults(collected);
     } catch (exc) {
-      setError(String(exc));
+      const message = exc instanceof Error ? exc.message : String(exc);
+      setError(message);
     } finally {
       setBusy(false);
     }
