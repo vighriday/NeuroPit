@@ -35,6 +35,7 @@ jobs:
             python-dotenv==1.0.0 \
             numpy==1.26.2 \
             scipy==1.11.4 \
+            pandas==2.0.3 \
             scikit-learn==1.4.0 \
             confluent-kafka==2.3.0 \
             influxdb-client==1.39.0 \
