@@ -89,3 +89,6 @@ desktop.ini
 .claude/
 .veris/
 docs/copilot_chat-*.txt
+
+# Local-only changelog, not part of public surface
+CHANGELOG.md
