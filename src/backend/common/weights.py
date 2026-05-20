@@ -148,6 +148,87 @@ class FailureForecastWeights:
 
 
 @dataclass(frozen=True)
+class PrescriptionScoringWeights:
+    """Thresholds and gains for the Prescriptive Engine action scorer.
+
+    Each prescribed action carries a small set of trigger conditions
+    that contribute to its score. The conditions are expressed as
+    threshold + gain pairs here so the scorer in
+    `src/backend/prescription/engine.py` stays a thin lookup rather
+    than a wall of literals. Every value lands in the audit log
+    alongside cognitive weights so historical prescriptions remain
+    explainable after a tuning pass.
+    """
+
+    # hold_position
+    hold_efficiency_baseline: float = 40.0
+    hold_efficiency_gain: float = 0.6
+    hold_no_threat_panic_max: float = 25.0
+    hold_no_threat_bonus: float = 25.0
+    hold_efficiency_high_threshold: float = 75.0
+    hold_efficiency_high_bonus: float = 10.0
+
+    # radio_calm
+    calm_stress_threshold: float = 60.0
+    calm_panic_threshold: float = 35.0
+    calm_panic_gain: float = 0.5
+    calm_forecast_panic_threshold: float = 35.0
+    calm_forecast_panic_gain: float = 0.4
+    calm_cognitive_load_threshold: float = 65.0
+    calm_cognitive_load_gain: float = 0.4
+
+    # radio_push
+    push_confidence_threshold: float = 70.0
+    push_confidence_gain: float = 0.8
+    push_flow_bonus: float = 25.0
+    push_efficiency_threshold: float = 70.0
+    push_efficiency_gain: float = 0.6
+    push_stress_dampen_threshold: float = 60.0
+    push_stress_dampen_factor: float = 0.4
+    push_forecast_panic_threshold: float = 40.0
+
+    # radio_reduce_information
+    reduce_cognitive_load_threshold: float = 70.0
+    reduce_cognitive_load_gain: float = 0.9
+    reduce_attention_threshold: float = 50.0
+    reduce_attention_gain: float = 0.6
+
+    # lift_aggression
+    lift_inefficiency_threshold: float = 20.0
+    lift_inefficiency_gain: float = 0.7
+    lift_stress_threshold: float = 70.0
+    lift_confidence_ceiling: float = 70.0
+    lift_stress_gain: float = 0.5
+
+    # request_undercut_window
+    undercut_confidence_threshold: float = 65.0
+    undercut_efficiency_threshold: float = 65.0
+    undercut_min_threshold: float = 60.0
+    undercut_flow_bonus: float = 8.0
+
+    # defensive_mode
+    defensive_confidence_threshold: float = 50.0
+    defensive_confidence_gain: float = 0.9
+    defensive_drift_threshold: float = 50.0
+    defensive_drift_gain: float = 0.6
+    defensive_persona_bonus: float = 10.0
+
+    # recovery_lap
+    recovery_fatigue_threshold: float = 65.0
+    recovery_fatigue_gain: float = 0.9
+    recovery_persona_bonus: float = 15.0
+    recovery_drift_threshold: float = 60.0
+    recovery_drift_gain: float = 0.5
+
+    # box_now
+    box_panic_threshold: float = 60.0
+    box_forecast_panic_threshold: float = 55.0
+    box_tunnel_vision_threshold: float = 50.0
+    box_tunnel_vision_bonus: float = 30.0
+    box_persona_bonus: float = 25.0
+
+
+@dataclass(frozen=True)
 class PersonaThresholds:
     panic_stress: float = 85.0
     panic_oscillation: float = 20.0
@@ -169,6 +250,7 @@ STRATEGIC = StrategicReliabilityWeights()
 PANIC = PanicProbabilityWeights()
 EMOTIONAL_DRIFT = EmotionalDriftWeights()
 FAILURE = FailureForecastWeights()
+PRESCRIPTION = PrescriptionScoringWeights()
 PERSONA = PersonaThresholds()
 
 
@@ -185,5 +267,6 @@ def snapshot() -> dict:
         "panic_probability": asdict(PANIC),
         "emotional_drift": asdict(EMOTIONAL_DRIFT),
         "failure_forecast": asdict(FAILURE),
+        "prescription": asdict(PRESCRIPTION),
         "persona": asdict(PERSONA),
     }

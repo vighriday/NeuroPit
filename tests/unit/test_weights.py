@@ -33,6 +33,7 @@ def test_snapshot_contains_every_section():
         "panic_probability",
         "emotional_drift",
         "failure_forecast",
+        "prescription",
         "persona",
     }
 

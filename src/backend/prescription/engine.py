@@ -19,6 +19,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from src.backend.common import weights
 from src.backend.prescription.actions import (
     ACTION_SPACE,
     GUARDRAILS,
@@ -136,107 +137,111 @@ def _action_score(
     triggers: List[str] = []
     score = 0.0
     inefficiency = max(0.0, 100.0 - optimality.cognitive_efficiency)
+    pw = weights.PRESCRIPTION
 
     if action.code == "hold_position":
         # Baseline action. Wins when the twin sits inside the envelope and
         # neither the forecast nor the persona drift threatens.
-        score = max(0.0, optimality.cognitive_efficiency - 40.0) * 0.6
-        if forecast_panic < 25.0 and persona in ("Flow State", "Recovery"):
-            score += 25.0
+        score = max(0.0, optimality.cognitive_efficiency - pw.hold_efficiency_baseline) * pw.hold_efficiency_gain
+        if forecast_panic < pw.hold_no_threat_panic_max and persona in ("Flow State", "Recovery"):
+            score += pw.hold_no_threat_bonus
             triggers.append("inside_envelope_no_threat")
-        if optimality.cognitive_efficiency > 75.0:
+        if optimality.cognitive_efficiency > pw.hold_efficiency_high_threshold:
             triggers.append("efficiency_above_75")
-            score += 10.0
+            score += pw.hold_efficiency_high_bonus
 
     elif action.code == "radio_calm":
-        if stress > 60.0:
-            score += stress - 60.0
+        if stress > pw.calm_stress_threshold:
+            score += stress - pw.calm_stress_threshold
             triggers.append("stress_above_60")
-        if panic > 35.0:
-            score += panic * 0.5
+        if panic > pw.calm_panic_threshold:
+            score += panic * pw.calm_panic_gain
             triggers.append("panic_above_35")
-        if forecast_panic > 35.0:
-            score += forecast_panic * 0.4
+        if forecast_panic > pw.calm_forecast_panic_threshold:
+            score += forecast_panic * pw.calm_forecast_panic_gain
             triggers.append("forecast_panic_above_35")
-        if cognitive_load > 65.0:
-            score += (cognitive_load - 65.0) * 0.4
+        if cognitive_load > pw.calm_cognitive_load_threshold:
+            score += (cognitive_load - pw.calm_cognitive_load_threshold) * pw.calm_cognitive_load_gain
             triggers.append("cognitive_load_above_65")
 
     elif action.code == "radio_push":
-        if confidence > 70.0:
-            score += (confidence - 70.0) * 0.8
+        if confidence > pw.push_confidence_threshold:
+            score += (confidence - pw.push_confidence_threshold) * pw.push_confidence_gain
             triggers.append("confidence_above_70")
         if persona == "Flow State":
-            score += 25.0
+            score += pw.push_flow_bonus
             triggers.append("persona_flow_state")
-        if optimality.cognitive_efficiency > 70.0:
-            score += (optimality.cognitive_efficiency - 70.0) * 0.6
+        if optimality.cognitive_efficiency > pw.push_efficiency_threshold:
+            score += (optimality.cognitive_efficiency - pw.push_efficiency_threshold) * pw.push_efficiency_gain
             triggers.append("efficiency_above_70")
-        if stress > 60.0:
-            score *= 0.4
-        if forecast_panic > 40.0:
+        if stress > pw.push_stress_dampen_threshold:
+            score *= pw.push_stress_dampen_factor
+        if forecast_panic > pw.push_forecast_panic_threshold:
             # Even a Flow State driver should not be pushed when the
             # five second forecast carries a panic collapse risk.
             score *= max(0.0, 1.0 - forecast_panic / 100.0)
 
     elif action.code == "radio_reduce_information":
-        if cognitive_load > 70.0:
-            score += (cognitive_load - 70.0) * 0.9
+        if cognitive_load > pw.reduce_cognitive_load_threshold:
+            score += (cognitive_load - pw.reduce_cognitive_load_threshold) * pw.reduce_cognitive_load_gain
             triggers.append("cognitive_load_above_70")
-        if attention < 50.0:
-            score += (50.0 - attention) * 0.6
+        if attention < pw.reduce_attention_threshold:
+            score += (pw.reduce_attention_threshold - attention) * pw.reduce_attention_gain
             triggers.append("attention_below_50")
 
     elif action.code == "lift_aggression":
-        if persona == "Aggressive" and inefficiency > 20.0:
-            score += inefficiency * 0.7
+        if persona == "Aggressive" and inefficiency > pw.lift_inefficiency_threshold:
+            score += inefficiency * pw.lift_inefficiency_gain
             triggers.append("aggressive_outside_envelope")
-        if stress > 70.0 and confidence < 70.0:
-            score += (stress - 70.0) * 0.5
+        if stress > pw.lift_stress_threshold and confidence < pw.lift_confidence_ceiling:
+            score += (stress - pw.lift_stress_threshold) * pw.lift_stress_gain
             triggers.append("stress_outpacing_confidence")
 
     elif action.code == "request_undercut_window":
-        if confidence > 65.0 and optimality.cognitive_efficiency > 65.0:
-            score += min(confidence, optimality.cognitive_efficiency) - 60.0
+        if (
+            confidence > pw.undercut_confidence_threshold
+            and optimality.cognitive_efficiency > pw.undercut_efficiency_threshold
+        ):
+            score += min(confidence, optimality.cognitive_efficiency) - pw.undercut_min_threshold
             triggers.append("confidence_and_efficiency_above_65")
         if persona == "Flow State":
-            score += 8.0
+            score += pw.undercut_flow_bonus
             triggers.append("persona_flow_state")
 
     elif action.code == "defensive_mode":
-        if confidence < 50.0:
-            score += (50.0 - confidence) * 0.9
+        if confidence < pw.defensive_confidence_threshold:
+            score += (pw.defensive_confidence_threshold - confidence) * pw.defensive_confidence_gain
             triggers.append("confidence_below_50")
-        if emotional_drift > 50.0:
-            score += (emotional_drift - 50.0) * 0.6
+        if emotional_drift > pw.defensive_drift_threshold:
+            score += (emotional_drift - pw.defensive_drift_threshold) * pw.defensive_drift_gain
             triggers.append("emotional_drift_above_50")
         if persona == "Defensive":
-            score += 10.0
+            score += pw.defensive_persona_bonus
             triggers.append("persona_defensive")
 
     elif action.code == "recovery_lap":
-        if fatigue > 65.0:
-            score += (fatigue - 65.0) * 0.9
+        if fatigue > pw.recovery_fatigue_threshold:
+            score += (fatigue - pw.recovery_fatigue_threshold) * pw.recovery_fatigue_gain
             triggers.append("fatigue_above_65")
         if persona == "Fatigue":
-            score += 15.0
+            score += pw.recovery_persona_bonus
             triggers.append("persona_fatigue")
-        if emotional_drift > 60.0:
-            score += (emotional_drift - 60.0) * 0.5
+        if emotional_drift > pw.recovery_drift_threshold:
+            score += (emotional_drift - pw.recovery_drift_threshold) * pw.recovery_drift_gain
             triggers.append("emotional_drift_above_60")
 
     elif action.code == "box_now":
-        if panic > 60.0:
+        if panic > pw.box_panic_threshold:
             score += panic
             triggers.append("panic_above_60")
-        if forecast_panic > 55.0:
+        if forecast_panic > pw.box_forecast_panic_threshold:
             score += forecast_panic
             triggers.append("forecast_panic_above_55")
-        if float(state.get("tunnel_vision_prob", 0.0)) > 50.0:
-            score += 30.0
+        if float(state.get("tunnel_vision_prob", 0.0)) > pw.box_tunnel_vision_threshold:
+            score += pw.box_tunnel_vision_bonus
             triggers.append("tunnel_vision_above_50")
         if persona == "Panic":
-            score += 25.0
+            score += pw.box_persona_bonus
             triggers.append("persona_panic")
 
     return float(max(0.0, score)), triggers
