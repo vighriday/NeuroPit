@@ -409,7 +409,6 @@ Every consumer gracefully degrades to "no grounding available" or "skipped" rath
 - [Cognitive methodology](docs/COGNITIVE_METHODOLOGY.md) — every weight, every threshold, the reasoning behind each one, including the Driver Performance Envelope and the What-If replay contract.
 - [Event taxonomy](docs/EVENT_TAXONOMY.md) — every Kafka topic, its payload shape, producers, consumers.
 - [Demo script](docs/DEMO.md) — minute-by-minute walkthrough of the live pit wall.
-- [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)

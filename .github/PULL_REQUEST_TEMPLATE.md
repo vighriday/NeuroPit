@@ -32,7 +32,3 @@ PRD section:
 - [ ] Unit suite passes locally with `make test`.
 - [ ] Frontend type check passes locally with `npx tsc --noEmit` inside `src/frontend`.
 - [ ] Integration suite ran where applicable (`make integration`).
-
-## Changelog
-
-- [ ] `CHANGELOG.md` updated under the Unreleased section.

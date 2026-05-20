@@ -44,7 +44,7 @@ make integration
 
 1. Branch from `main`. Name the branch `feature/<short-slug>` or `fix/<short-slug>`.
 2. Write a unit test before the fix or feature. The unit suite must stay green.
-3. Update `docs/COGNITIVE_METHODOLOGY.md` if you adjust a weight. Update `docs/EVENT_TAXONOMY.md` if you add a topic. Update `CHANGELOG.md` under the Unreleased section.
+3. Update `docs/COGNITIVE_METHODOLOGY.md` if you adjust a weight. Update `docs/EVENT_TAXONOMY.md` if you add a topic.
 4. Open the pull request against `main`. Use the pull request template. Tick the boxes that apply.
 5. CI must pass. The unit suite, the import smoke, and the frontend type check all run on every pull request.
 
