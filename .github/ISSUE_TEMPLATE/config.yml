@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: NeuroPit architecture
-    url: https://github.com/vighriday/NeuroPit/blob/main/docs/ARCHITECTURE.md
+    url: https://github.com/vighriday/neuropit-may-2026/blob/main/docs/ARCHITECTURE.md
     about: Start here before opening a structural change request.
   - name: Cognitive methodology
-    url: https://github.com/vighriday/NeuroPit/blob/main/docs/COGNITIVE_METHODOLOGY.md
+    url: https://github.com/vighriday/neuropit-may-2026/blob/main/docs/COGNITIVE_METHODOLOGY.md
     about: Read this before adjusting any cognitive weight or scoring rule.
   - name: Event taxonomy
-    url: https://github.com/vighriday/NeuroPit/blob/main/docs/EVENT_TAXONOMY.md
+    url: https://github.com/vighriday/neuropit-may-2026/blob/main/docs/EVENT_TAXONOMY.md
     about: Read this before adding a new Kafka topic or changing a payload shape.

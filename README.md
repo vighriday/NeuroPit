@@ -8,7 +8,7 @@
 
 *Telemetry is infrastructure. Cognition is the product.*
 
-[![CI](https://github.com/vighriday/NeuroPit/actions/workflows/ci.yml/badge.svg)](https://github.com/vighriday/NeuroPit/actions/workflows/ci.yml)
+[![CI](https://github.com/vighriday/neuropit-may-2026/actions/workflows/ci.yml/badge.svg)](https://github.com/vighriday/neuropit-may-2026/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![IBM Granite](https://img.shields.io/badge/IBM-Granite-052FAD?logo=ibm)](https://github.com/ibm-granite-community)
 [![IBM Docling](https://img.shields.io/badge/IBM-Docling-052FAD?logo=ibm)](https://www.docling.ai)
@@ -213,7 +213,7 @@ Every weight, threshold, and assumption is documented in [`docs/COGNITIVE_METHOD
 Requires **Python 3.11+**, **Node 20+**, and **Docker**.
 
 ```bash
-git clone https://github.com/vighriday/NeuroPit.git
+git clone https://github.com/vighriday/neuropit-may-2026.git
 cd NeuroPit
 cp .env.example .env
 
@@ -238,7 +238,7 @@ If you are evaluating NeuroPit for the IBM AI Builders Challenge, this is the sh
 
 ```bash
 # 1. one-line setup (Python 3.11+, Node 20+, Docker required)
-git clone https://github.com/vighriday/NeuroPit.git && cd NeuroPit && cp .env.example .env && make install && make infra-up && make bootstrap
+git clone https://github.com/vighriday/neuropit-may-2026.git && cd NeuroPit && cp .env.example .env && make install && make infra-up && make bootstrap
 
 # 2. boot the pipeline (run each in its own terminal)
 make backend
