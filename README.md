@@ -251,6 +251,17 @@ cd src/frontend && npm install && npm run dev
 # 4. open http://localhost:3000
 ```
 
+> **No `make` on Windows?** Run the raw commands instead. Each `make` target is one line:
+>
+> ```bash
+> python -m pip install -r src/backend/requirements.txt   # make install
+> docker compose -f infrastructure/docker-compose.yml up -d   # make infra-up
+> python -m src.backend.init_infrastructure                # make bootstrap
+> python -m src.backend.run_backend                        # make backend
+> python -m src.backend.api.gateway                        # make gateway
+> python -m src.backend.ingestion.streamer                 # make stream
+> ```
+
 **What to look at, in order:**
 
 1. **Mission Control pit-wall** at `http://localhost:3000` — driver selector, four primary cognitive rings, persona drift strip, IBM Granite reasoning panel.
