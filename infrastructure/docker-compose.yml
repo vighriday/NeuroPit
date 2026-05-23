@@ -57,11 +57,11 @@ services:
       - "8086:8086"
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=neuropit_admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=neuropit_secure_pass_2026
-      - DOCKER_INFLUXDB_INIT_ORG=neuropit
-      - DOCKER_INFLUXDB_INIT_BUCKET=neuropit-telemetry
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=neuropit-local-dev-token-999
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_INIT_USERNAME:-neuropit_admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_INIT_PASSWORD:?set INFLUXDB_INIT_PASSWORD in .env before starting}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-neuropit}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-neuropit-telemetry}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:?set INFLUXDB_TOKEN in .env before starting}
     volumes:
       - influxdb-data:/var/lib/influxdb2
       - influxdb-config:/etc/influxdb2

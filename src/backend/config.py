@@ -30,7 +30,7 @@ class NeuroPitSettings(BaseSettings):
 
     # Influx
     influxdb_url: str = Field(default="http://localhost:8086")
-    influxdb_token: str = Field(default="neuropit-local-dev-token-999")
+    influxdb_token: str = Field(default="")
     influxdb_org: str = Field(default="neuropit")
     influxdb_bucket: str = Field(default="neuropit-telemetry")
 
