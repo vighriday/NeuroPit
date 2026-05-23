@@ -26,10 +26,10 @@ install:
 	$(PYTHON) -m pip install -r src/backend/requirements.txt
 
 infra-up:
-	docker compose -f infrastructure/docker-compose.yml up -d
+	docker compose --env-file .env -f infrastructure/docker-compose.yml up -d
 
 infra-down:
-	docker compose -f infrastructure/docker-compose.yml down
+	docker compose --env-file .env -f infrastructure/docker-compose.yml down
 
 bootstrap:
 	$(PYTHON) -m src.backend.init_infrastructure

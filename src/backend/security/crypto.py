@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 _LOCAL_SALT = b"neuropit-local-dev-salt"
+_dev_key_warning_emitted = False
 
 
 def _derive_local_key() -> bytes:
@@ -36,9 +37,12 @@ def _derive_local_key() -> bytes:
 
 
 def _resolve_key(encryption_key: Optional[str]) -> bytes:
+    global _dev_key_warning_emitted
     if encryption_key:
         return encryption_key.encode("utf-8") if isinstance(encryption_key, str) else encryption_key
-    logger.warning("ENCRYPTION_KEY is empty, using deterministic developer key. Do not use this in production.")
+    if not _dev_key_warning_emitted:
+        logger.warning("ENCRYPTION_KEY is empty, using deterministic developer key. Do not use this in production.")
+        _dev_key_warning_emitted = True
     return _derive_local_key()
 
 

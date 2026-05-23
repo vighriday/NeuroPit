@@ -255,7 +255,7 @@ cd src/frontend && npm install && npm run dev
 >
 > ```bash
 > python -m pip install -r src/backend/requirements.txt   # make install
-> docker compose -f infrastructure/docker-compose.yml up -d   # make infra-up
+> docker compose --env-file .env -f infrastructure/docker-compose.yml up -d   # make infra-up
 > python -m src.backend.init_infrastructure                # make bootstrap
 > python -m src.backend.run_backend                        # make backend
 > python -m src.backend.api.gateway                        # make gateway
