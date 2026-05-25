@@ -30,7 +30,7 @@
  * raw stream is not displayed even on the local device.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type CaptureState =
   | "idle"
@@ -40,11 +40,12 @@ type CaptureState =
   | "no-camera"
   | "error";
 
-const SAMPLE_BUFFER_SIZE = 256; // ~8s at 30fps
-const MIN_SAMPLES_FOR_BPM = 96;
+const SAMPLE_BUFFER_SIZE = 512; // ~17s at 30fps
+const MIN_SAMPLES_FOR_BPM = 180; // ~6s at 30fps
 const MIN_PLAUSIBLE_BPM = 40;
-const MAX_PLAUSIBLE_BPM = 200;
+const MAX_PLAUSIBLE_BPM = 180; // 200 is too lenient; real adults rarely cross 180 at rest
 const EMIT_INTERVAL_MS = 1000;
+const BPM_SMOOTHING_WINDOW = 5; // median across last N estimates before emitting
 
 function deriveWsUrl(apiBase: string | undefined): string {
   if (typeof window === "undefined") return "ws://localhost:8000/ws/sensor";
@@ -59,73 +60,112 @@ function deriveWsUrl(apiBase: string | undefined): string {
   }
 }
 
-function bandpass(samples: number[]): number[] {
-  // Cheap difference filter to remove DC drift, then a 3 tap moving
-  // average to damp shot noise. Both steps are linear so they preserve
-  // the dominant pulse frequency we are trying to extract.
-  const detrended: number[] = [];
-  for (let i = 1; i < samples.length; i += 1) {
-    detrended.push(samples[i] - samples[i - 1]);
+function detrend(samples: number[]): number[] {
+  // Remove slow DC drift by subtracting a rolling mean over a one
+  // second window. Keeps the pulse component intact while killing
+  // ambient light shifts as the finger moves slightly.
+  if (samples.length < 16) return samples.slice();
+  const window = 30;
+  const out: number[] = new Array(samples.length).fill(0);
+  let sum = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    sum += samples[i];
+    if (i >= window) sum -= samples[i - window];
+    const w = Math.min(i + 1, window);
+    out[i] = samples[i] - sum / w;
   }
-  const smoothed: number[] = [];
-  for (let i = 1; i < detrended.length - 1; i += 1) {
-    smoothed.push((detrended[i - 1] + detrended[i] + detrended[i + 1]) / 3);
+  return out;
+}
+
+function smooth3(samples: number[]): number[] {
+  if (samples.length < 3) return samples.slice();
+  const out: number[] = new Array(samples.length);
+  out[0] = samples[0];
+  out[samples.length - 1] = samples[samples.length - 1];
+  for (let i = 1; i < samples.length - 1; i += 1) {
+    out[i] = (samples[i - 1] + samples[i] + samples[i + 1]) / 3;
   }
-  return smoothed;
+  return out;
+}
+
+function median(values: number[]): number {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
+  return sorted[mid];
 }
 
 function estimateBpm(samples: number[], fps: number): { bpm: number; confidence: number } {
-  if (samples.length < MIN_SAMPLES_FOR_BPM || fps < 5) {
+  if (samples.length < MIN_SAMPLES_FOR_BPM || fps < 8) {
     return { bpm: 0, confidence: 0 };
   }
-  const filtered = bandpass(samples);
-  if (filtered.length < 4) return { bpm: 0, confidence: 0 };
+  const filtered = smooth3(detrend(samples));
+  if (filtered.length < 16) return { bpm: 0, confidence: 0 };
 
-  // Mean threshold peak counting. A "peak" is a sample above the
-  // running mean that is also a local maximum versus its neighbours.
   const mean = filtered.reduce((acc, x) => acc + x, 0) / filtered.length;
   const std = Math.sqrt(
     filtered.reduce((acc, x) => acc + (x - mean) ** 2, 0) / filtered.length,
   );
-  const threshold = mean + std * 0.25;
+  // Need a non flat signal. Pure DC means finger fell off the lens.
+  if (std < 0.05) return { bpm: 0, confidence: 0 };
+
+  // Mean plus half a stdev is a robust threshold for the systolic peak
+  // of an inverted PPG trace.
+  const threshold = mean + std * 0.5;
+
+  // Refractory period: enforce minimum 0.33s between accepted peaks
+  // (= 180 BPM ceiling) so a noisy double bounce on one beat does not
+  // get counted twice. This is the single biggest source of the
+  // earlier 200 BPM saturation.
+  const minPeakGap = Math.round(fps * 0.33);
 
   const peakIndices: number[] = [];
+  let lastPeak = -minPeakGap - 1;
   for (let i = 1; i < filtered.length - 1; i += 1) {
     if (
       filtered[i] > threshold &&
       filtered[i] > filtered[i - 1] &&
-      filtered[i] >= filtered[i + 1]
+      filtered[i] >= filtered[i + 1] &&
+      i - lastPeak >= minPeakGap
     ) {
       peakIndices.push(i);
+      lastPeak = i;
     }
   }
 
-  if (peakIndices.length < 2) return { bpm: 0, confidence: 0 };
+  if (peakIndices.length < 3) return { bpm: 0, confidence: 0 };
 
   const deltas: number[] = [];
   for (let i = 1; i < peakIndices.length; i += 1) {
     deltas.push(peakIndices[i] - peakIndices[i - 1]);
   }
-  // Discard implausible deltas (sub 0.3s or above 1.5s).
-  const minDelta = fps * 0.3;
+  const minDelta = fps * 0.33;
   const maxDelta = fps * 1.5;
   const usable = deltas.filter((d) => d >= minDelta && d <= maxDelta);
-  if (usable.length < 1) return { bpm: 0, confidence: 0 };
+  if (usable.length < 2) return { bpm: 0, confidence: 0 };
 
-  const avgDelta = usable.reduce((acc, x) => acc + x, 0) / usable.length;
-  const bpm = (60 * fps) / avgDelta;
+  // Median delta beats the mean here because a single missed beat
+  // doubles one delta and pulls the mean down by half a BPM range.
+  const medianDelta = median(usable);
+  const bpm = (60 * fps) / medianDelta;
   if (bpm < MIN_PLAUSIBLE_BPM || bpm > MAX_PLAUSIBLE_BPM) {
     return { bpm: 0, confidence: 0 };
   }
 
-  // Confidence shrinks when delta variance is high.
-  const deltaMean = avgDelta;
-  const deltaStd = Math.sqrt(
-    usable.reduce((acc, x) => acc + (x - deltaMean) ** 2, 0) / usable.length,
+  // Confidence shrinks with delta variance and grows with sample
+  // count. A long, regular trace earns a higher confidence than a
+  // short noisy one.
+  const dMean = usable.reduce((acc, x) => acc + x, 0) / usable.length;
+  const dStd = Math.sqrt(
+    usable.reduce((acc, x) => acc + (x - dMean) ** 2, 0) / usable.length,
   );
-  const cv = deltaStd / deltaMean;
-  const confidence = Math.max(0, Math.min(1, 1 - cv));
-  return { bpm: Math.round(bpm * 10) / 10, confidence: Math.round(confidence * 100) / 100 };
+  const cv = dStd / dMean;
+  const lengthBoost = Math.min(usable.length / 8, 1);
+  const confidence = Math.max(0, Math.min(1, (1 - cv) * lengthBoost));
+  return {
+    bpm: Math.round(bpm * 10) / 10,
+    confidence: Math.round(confidence * 100) / 100,
+  };
 }
 
 export default function SensorPage() {
@@ -146,11 +186,20 @@ export default function SensorPage() {
   const rafRef = useRef<number | null>(null);
   const lastEmitRef = useRef<number>(0);
   const frameTimesRef = useRef<number[]>([]);
+  const bpmHistoryRef = useRef<number[]>([]);
+  const wsUrlRef = useRef<string>("");
+  const wantWsRef = useRef<boolean>(false);
 
-  const wsUrl = useMemo(
-    () => deriveWsUrl(process.env.NEXT_PUBLIC_NEUROPIT_API_URL),
-    [],
-  );
+  // The WS URL depends on window.location and the
+  // NEXT_PUBLIC_NEUROPIT_API_URL env var. Both can read differently on
+  // the server vs the client, which would trigger a React hydration
+  // mismatch. We compute the URL inside a client side effect after
+  // hydration so the first SSR render and the first browser render
+  // produce identical HTML.
+  const [wsUrl, setWsUrl] = useState<string>("");
+  useEffect(() => {
+    setWsUrl(deriveWsUrl(process.env.NEXT_PUBLIC_NEUROPIT_API_URL));
+  }, []);
 
   useEffect(() => {
     return () => stopCapture();
@@ -158,6 +207,7 @@ export default function SensorPage() {
   }, []);
 
   const stopCapture = () => {
+    wantWsRef.current = false;
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -176,9 +226,43 @@ export default function SensorPage() {
     }
     samplesRef.current = [];
     frameTimesRef.current = [];
+    bpmHistoryRef.current = [];
     setTorchActive(false);
     setBpm(null);
     setConfidence(0);
+  };
+
+  const openSocket = () => {
+    const url = wsUrlRef.current;
+    if (!url) return;
+    try {
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+      ws.onerror = () => {
+        // Soft fail. The reconnect loop will retry. Surface a banner
+        // only after we have been disconnected for a while.
+        setErrorMessage(
+          "Lost connection to NeuroPit gateway. Retrying...",
+        );
+      };
+      ws.onclose = () => {
+        wsRef.current = null;
+        if (wantWsRef.current) {
+          // Backoff a beat before retrying so we do not hammer a dead
+          // gateway. One second is plenty given PPG emits at 1 Hz.
+          setTimeout(() => {
+            if (wantWsRef.current && wsRef.current === null) {
+              openSocket();
+            }
+          }, 1000);
+        }
+      };
+      ws.onopen = () => {
+        setErrorMessage(null);
+      };
+    } catch (err) {
+      setErrorMessage(`WebSocket failed to open: ${(err as Error)?.message ?? err}`);
+    }
   };
 
   const startCapture = async () => {
@@ -222,13 +306,9 @@ export default function SensorPage() {
         setTorchActive(false);
       }
 
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      ws.onerror = () => {
-        setErrorMessage("Could not connect to NeuroPit gateway. Is it running?");
-        setState("error");
-        stopCapture();
-      };
+      wsUrlRef.current = wsUrl;
+      wantWsRef.current = true;
+      openSocket();
 
       setState("running");
       lastEmitRef.current = performance.now();
@@ -287,19 +367,29 @@ export default function SensorPage() {
       lastEmitRef.current = now;
       const estimated = estimateBpm(samplesRef.current, frameTimesRef.current.length);
       if (estimated.bpm > 0) {
-        setBpm(estimated.bpm);
-        setConfidence(estimated.confidence);
-        const ws = wsRef.current;
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              driver_id: driverId,
-              bpm: estimated.bpm,
-              confidence: estimated.confidence,
-              timestamp: new Date().toISOString(),
-            }),
-          );
-          setSentCount((n) => n + 1);
+        // Median across the last few estimates damps single bad
+        // windows. The first emit only fires after we have at least
+        // two estimates so the displayed number is never a one shot.
+        bpmHistoryRef.current.push(estimated.bpm);
+        while (bpmHistoryRef.current.length > BPM_SMOOTHING_WINDOW) {
+          bpmHistoryRef.current.shift();
+        }
+        if (bpmHistoryRef.current.length >= 2) {
+          const smoothed = Math.round(median(bpmHistoryRef.current) * 10) / 10;
+          setBpm(smoothed);
+          setConfidence(estimated.confidence);
+          const ws = wsRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(
+              JSON.stringify({
+                driver_id: driverId,
+                bpm: smoothed,
+                confidence: estimated.confidence,
+                timestamp: new Date().toISOString(),
+              }),
+            );
+            setSentCount((n) => n + 1);
+          }
         }
       }
     }

@@ -42,6 +42,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -174,6 +175,74 @@ def _read_process_record() -> Dict[str, int]:
         return {}
 
 
+def _detect_lan_ip() -> str:
+    """Return the laptop's outward facing LAN IPv4 address.
+
+    Used to print a phone friendly URL for the live PPG sensor page.
+    Returns 'localhost' if no usable interface can be discovered, in
+    which case the judge can still reach the page from the laptop
+    itself but the phone path is unavailable.
+    """
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # The destination does not need to be reachable; this just
+            # nudges Windows to pick the interface it would use for
+            # outbound traffic, which is usually the active LAN one.
+            sock.connect(("8.8.8.8", 80))
+            ip = sock.getsockname()[0]
+        finally:
+            sock.close()
+        if isinstance(ip, str) and ip:
+            return ip
+    except Exception:
+        pass
+    return "localhost"
+
+
+def _launch_frontend(lan_ip: str) -> Optional[int]:
+    frontend_dir = ROOT / "src" / "frontend"
+    if not (frontend_dir / "package.json").exists():
+        logger.warning("Frontend directory not present, skipping Mission Control launch")
+        return None
+
+    # Install npm deps if node_modules is missing. Skip otherwise so a
+    # rerun is fast.
+    if not (frontend_dir / "node_modules").exists():
+        logger.info("Installing frontend dependencies (first time may take a couple of minutes)")
+        npm = shutil.which("npm")
+        if npm is None:
+            logger.warning("`npm` is not on PATH, cannot install frontend deps")
+            return None
+        install = subprocess.run(
+            [npm, "install"], cwd=str(frontend_dir), check=False
+        )
+        if install.returncode != 0:
+            logger.warning("npm install failed with %d", install.returncode)
+            return None
+
+    env = os.environ.copy()
+    env["NEXT_PUBLIC_NEUROPIT_API_URL"] = f"http://{lan_ip}:8000"
+
+    LOG_DIR.mkdir(exist_ok=True)
+    log_path = LOG_DIR / "frontend.log"
+    log_handle = open(log_path, "a", encoding="utf-8")
+    npx = shutil.which("npx") or shutil.which("npx.cmd")
+    if npx is None:
+        logger.warning("`npx` is not on PATH, cannot launch Mission Control")
+        return None
+    proc = subprocess.Popen(  # noqa: S603 (judge convenience launcher)
+        [npx, "next", "dev", "-H", "0.0.0.0"],
+        cwd=str(frontend_dir),
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        env=env,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+    )
+    logger.info("Launched frontend (pid %d, log %s)", proc.pid, log_path)
+    return proc.pid
+
+
 def _stop_process(name: str, pid: int) -> None:
     try:
         if os.name == "nt":
@@ -185,28 +254,40 @@ def _stop_process(name: str, pid: int) -> None:
         logger.warning("Could not stop %s (pid %d): %s", name, pid, exc)
 
 
-def up() -> None:
+def up(launch_frontend: bool = True) -> None:
     _check_docker()
     _ensure_env()
     _infra_up()
     _wait_for_kafka()
     _bootstrap()
 
+    lan_ip = _detect_lan_ip()
+
     processes: Dict[str, int] = {
         "backend": _launch("backend", "src.backend.run_backend"),
         "gateway": _launch("gateway", "src.backend.api.gateway"),
         "streamer": _launch("streamer", "src.backend.ingestion.streamer"),
     }
+    if launch_frontend:
+        frontend_pid = _launch_frontend(lan_ip)
+        if frontend_pid is not None:
+            processes["frontend"] = frontend_pid
     _record_processes(processes)
 
     print()
     print("NeuroPit is coming online.")
-    print("  Mission Control:    http://localhost:3000  (run `npm run dev` inside src/frontend)")
-    print("  Gateway:            http://localhost:8000/docs")
-    print("  Live PPG sensor:    http://localhost:3000/sensor")
-    print("  Redpanda Console:   http://localhost:8080")
+    print(f"  Mission Control:    http://{lan_ip}:3000")
+    print(f"  Live PPG sensor:    http://{lan_ip}:3000/sensor   (open this on your phone)")
+    print(f"  Gateway:            http://{lan_ip}:8000/docs")
+    print(f"  Redpanda Console:   http://{lan_ip}:8080")
     print()
-    print("Backend, gateway, and streamer logs live in:")
+    print("Phone notes:")
+    print("  * Phone must be on the same WiFi as this laptop.")
+    print("  * Camera access requires HTTPS on remote IPs in Safari and recent Chrome.")
+    print("    On the phone, open chrome://flags/#unsafely-treat-insecure-origin-as-secure")
+    print(f"    and whitelist http://{lan_ip}:3000 before opening the sensor page.")
+    print()
+    print("Backend, gateway, streamer, and frontend logs live in:")
     print(f"  {LOG_DIR}")
     print()
     print("To shut everything down: python scripts/judge_bootstrap.py --down")
@@ -224,12 +305,17 @@ def down() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--down", action="store_true", help="Stop the running stack instead of starting it")
+    parser.add_argument(
+        "--no-frontend",
+        action="store_true",
+        help="Skip launching Mission Control (judge will run npm run dev manually)",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     if args.down:
         down()
     else:
-        up()
+        up(launch_frontend=not args.no_frontend)
 
 
 if __name__ == "__main__":
