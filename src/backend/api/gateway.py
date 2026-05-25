@@ -392,6 +392,71 @@ def create_app() -> FastAPI:
         except WebSocketDisconnect:
             await manager.disconnect(websocket)
 
+    @app.websocket("/ws/sensor")
+    async def sensor_socket(websocket: WebSocket) -> None:
+        """Accept live PPG biometric samples from a browser tab.
+
+        The endpoint is intentionally unauthenticated. PPG runs on a
+        phone the operator brought to the demo, the data never leaves
+        the local network, and forcing a JWT round trip on the phone
+        would add ceremony for zero security benefit. The companion
+        page (`/sensor`) renders a QR code with the WebSocket URL so
+        the operator can point a phone at the laptop and start
+        streaming in two taps.
+
+        Payload schema (JSON per frame):
+
+            {
+              "driver_id": "VER",       # which driver this BPM is for
+              "bpm": 88.2,              # extracted heart rate
+              "confidence": 0.84,       # 0..1, browser side confidence
+              "timestamp": "ISO 8601"   # optional, defaults to server time
+            }
+
+        Implausible BPM values are dropped silently with a debug log.
+        """
+        from src.backend.integration.ppg_ingest import PPGForwarder, PPGSample
+
+        settings = get_settings()
+        forwarder = PPGForwarder(settings.kafka_broker_url)
+        await websocket.accept()
+        logger.info("PPG sensor connected from %s", websocket.client)
+        forwarded = 0
+        try:
+            while True:
+                raw = await websocket.receive_text()
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    logger.debug("PPG socket received non JSON frame, ignoring")
+                    continue
+                sample = PPGSample(
+                    driver_id=str(payload.get("driver_id", "")),
+                    bpm=float(payload.get("bpm", 0.0)),
+                    confidence=float(payload.get("confidence", 0.5)),
+                    timestamp=payload.get("timestamp"),
+                )
+                if forwarder.forward(sample):
+                    forwarded += 1
+                    # Flush eagerly. Phone payloads arrive at 1Hz so the
+                    # extra flush cost is negligible and it makes events
+                    # visible on Kafka right away rather than waiting for
+                    # the producer's batch timer.
+                    forwarder.flush(timeout=0.5)
+        except WebSocketDisconnect:
+            forwarder.flush()
+            logger.info(
+                "PPG sensor disconnected (forwarded=%d, dropped=%d)",
+                forwarded,
+                forwarder.dropped_count,
+            )
+        except Exception as exc:
+            logger.warning("PPG sensor socket terminated: %s", exc)
+            try:
+                await websocket.close()
+            except Exception:
+                pass
+
     return app
 
 
