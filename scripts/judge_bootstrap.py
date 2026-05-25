@@ -139,6 +139,61 @@ def _wait_for_kafka(timeout: float = 60.0) -> None:
     logger.warning("Redpanda did not become ready within %.0fs, attempting bootstrap anyway", timeout)
 
 
+def _wait_for_influx(timeout: float = 90.0) -> None:
+    """Block until InfluxDB accepts a write with the configured token.
+
+    A fresh InfluxDB container takes a few seconds after the port is
+    listening before the admin token is fully provisioned. If the
+    backend is launched before that point it logs a long burst of
+    `401 unauthorized` errors that look alarming. Waiting here keeps
+    the log clean.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    logger.info("Waiting for InfluxDB to accept authenticated writes...")
+    env_lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
+    env_map = {}
+    for line in env_lines:
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, _, value = line.partition("=")
+            env_map[key.strip()] = value.strip()
+    token = env_map.get("INFLUXDB_TOKEN") or "neuropit-judge-local-token"
+    org = env_map.get("INFLUXDB_ORG") or "neuropit"
+    bucket = env_map.get("INFLUXDB_BUCKET") or "neuropit-telemetry"
+    url = env_map.get("INFLUXDB_URL") or "http://localhost:8086"
+
+    write_url = f"{url}/api/v2/write?org={org}&bucket={bucket}&precision=s"
+    deadline = time.time() + timeout
+    last_status = None
+    while time.time() < deadline:
+        req = urllib.request.Request(
+            write_url,
+            data=b"bootstrap_probe value=1",
+            method="POST",
+            headers={"Authorization": f"Token {token}"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                if 200 <= resp.status < 300:
+                    logger.info("InfluxDB ready")
+                    return
+                last_status = resp.status
+        except urllib.error.HTTPError as exc:
+            last_status = exc.code
+        except Exception as exc:
+            last_status = repr(exc)
+        time.sleep(2.0)
+    logger.warning(
+        "InfluxDB did not accept an authenticated write within %.0fs (last status %s); "
+        "the backend will log 401 errors until the token is provisioned. "
+        "If this persists, run `python scripts/judge_bootstrap.py --reset` once.",
+        timeout,
+        last_status,
+    )
+
+
 def _bootstrap() -> None:
     res = _run([PYTHON, "-m", "src.backend.init_infrastructure"])
     if res.returncode != 0:
@@ -259,6 +314,7 @@ def up(launch_frontend: bool = True) -> None:
     _ensure_env()
     _infra_up()
     _wait_for_kafka()
+    _wait_for_influx()
     _bootstrap()
 
     lan_ip = _detect_lan_ip()
@@ -302,6 +358,16 @@ def down() -> None:
     _compose(["down"])
 
 
+def reset_volumes() -> None:
+    """Wipe the docker volumes so InfluxDB re-initialises with the
+    credentials in the current `.env`. Use when a prior bootstrap left
+    InfluxDB seeded with a token that no longer matches.
+    """
+    logger.warning("Bringing the stack down with -v to wipe persisted volumes")
+    _compose(["down", "-v"])
+    logger.info("Volumes wiped. Run the bootstrap again without --reset to bring everything back up.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--down", action="store_true", help="Stop the running stack instead of starting it")
@@ -310,8 +376,21 @@ def main() -> None:
         action="store_true",
         help="Skip launching Mission Control (judge will run npm run dev manually)",
     )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help=(
+            "Wipe the docker volumes so InfluxDB re-initialises with the credentials "
+            "in the current .env. Use this once if the cognitive engine logs show "
+            "'401 unauthorized' against InfluxDB after a fresh bootstrap. Run the "
+            "bootstrap again without --reset afterwards."
+        ),
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    if args.reset:
+        reset_volumes()
+        return
     if args.down:
         down()
     else:
